@@ -1,0 +1,52 @@
+# ---------------------------------------------------------------------------
+# Portainer stack for camera-recordings
+#
+# Portainer → Stacks → Add stack
+#   * "Repository" build: point it at this git repo, compose path
+#     docker-compose.yml (the image is built from the Dockerfile next to it)
+#   * or "Web editor": paste this file and replace `build: .` with a prebuilt
+#     `image:` reference.
+#
+# Set the environment variables below in the Portainer "Environment variables"
+# section – at the very least APP_SECRET and ADMIN_PASSWORD.
+# ---------------------------------------------------------------------------
+
+services:
+  camera-recordings:
+    build: .
+    image: camera-recordings:latest
+    container_name: camera-recordings
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    environment:
+      TZ: "${TZ:-Europe/Bratislava}"
+      DATA_DIR: /data
+      APP_SECRET: "${APP_SECRET:-please-change-me}"
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-changeme}"
+      SESSION_HOURS: "${SESSION_HOURS:-72}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+    volumes:
+      # Database, recordings, snapshots and thumbnails all live here.
+      - camera-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  camera-data:
+    # Swap for a bind mount if you want the files on a specific disk:
+    # driver_opts:
+    #   type: none
+    #   o: bind
+    #   device: /srv/camera-recordings

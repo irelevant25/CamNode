@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sign in · Camera Recordings</title>
+    <link rel="stylesheet" href="/css/styles.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📹</text></svg>" />
+  </head>
+  <body>
+    <div class="login-wrap">
+      <form class="login-card" id="login-form">
+        <div class="brand">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="6" width="14" height="12" rx="2" />
+            <path d="m16 11 6-3v8l-6-3z" />
+          </svg>
+          Camera Recordings
+        </div>
+        <p class="muted">Sign in to continue</p>
+
+        <div class="field">
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text" autocomplete="username" required autofocus />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required />
+        </div>
+        <button class="btn primary" type="submit" style="width: 100%; justify-content: center">Sign in</button>
+        <div class="error-text" id="error"></div>
+      </form>
+    </div>
+
+    <script>
+      const form = document.getElementById('login-form');
+      const errorBox = document.getElementById('error');
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        errorBox.textContent = '';
+        const button = form.querySelector('button');
+        button.disabled = true;
+        try {
+          const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: document.getElementById('username').value,
+              password: document.getElementById('password').value,
+            }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.error || 'Sign in failed');
+          const next = new URLSearchParams(location.search).get('next');
+          location.href = next && next.startsWith('/') ? next : '/';
+        } catch (err) {
+          errorBox.textContent = err.message;
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
