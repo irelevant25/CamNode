@@ -3,3 +3,10 @@ data/
 *.log
 .env
 .DS_Store
+
+# Local ffmpeg build dropped next to the app (~600 MB, not for the repo).
+# The Docker image installs ffmpeg from apt instead.
+ffmpeg.exe
+ffprobe.exe
+ffplay.exe
+bin/

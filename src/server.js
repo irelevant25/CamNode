@@ -24,6 +24,10 @@ function createServer() {
 
   app.get('/api/health', (req, res) => res.json({ ok: true, uptime: Math.round(process.uptime()) }));
 
+  // Cameras push ONVIF notifications here – authenticated by a per-camera token
+  // in the URL, not by a session.
+  app.use('/onvif', require('./routes/notify'));
+
   app.use('/api/auth', require('./routes/auth'));
   app.use('/api/cameras', auth.requireAuth, require('./routes/cameras'));
   app.use('/api/recordings', auth.requireAuth, require('./routes/recordings'));

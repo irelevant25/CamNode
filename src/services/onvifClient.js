@@ -192,6 +192,86 @@ function pickToken(preferred, profiles, fallback) {
   return fallback;
 }
 
+/* ----------------------------------------------------- push subscriptions */
+
+/**
+ * WS-BaseNotification subscription: the camera POSTs notifications to
+ * `consumerUrl` instead of us polling it. Needed for cameras (Tapo among them)
+ * that advertise a pull point but reset the connection on PullMessages.
+ */
+function subscribePush(cam, consumerUrl) {
+  return new Promise((resolve, reject) => {
+    cam.subscribe({ url: consumerUrl }, (err, subscription) => {
+      if (err) return reject(new Error((err && err.message) || String(err)));
+      resolve(subscription);
+    });
+  });
+}
+
+/** Extend the current subscription (they expire after ~2 minutes). */
+function renewSubscription(cam) {
+  return new Promise((resolve, reject) => {
+    cam.renew({}, (err, data) => {
+      if (err) return reject(new Error((err && err.message) || String(err)));
+      resolve(data);
+    });
+  });
+}
+
+/**
+ * Ask the camera to send the current state of every property as notifications
+ * right now. Doubles as a reachability test: if the consumer URL works we get
+ * traffic within a second or two instead of waiting for real motion.
+ */
+function setSynchronizationPoint(cam) {
+  return new Promise((resolve, reject) => {
+    const subscription = cam && cam.events && cam.events.subscription;
+    const address = subscription && subscription.subscriptionReference && subscription.subscriptionReference.address;
+    if (!address) return reject(new Error('no active event subscription'));
+    const body =
+      cam._envelopeHeader(true) +
+      `<a:To>${address.href}</a:To>` +
+      '</s:Header>' +
+      '<s:Body xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">' +
+      '<SetSynchronizationPoint xmlns="http://www.onvif.org/ver10/events/wsdl"/>' +
+      cam._envelopeFooter();
+    cam._request({ url: address, body }, (err) => {
+      if (err) return reject(new Error((err && err.message) || String(err)));
+      resolve();
+    });
+  });
+}
+
+function unsubscribeEvents(cam) {
+  return new Promise((resolve) => {
+    try {
+      if (!cam || !cam.events || !cam.events.subscription) return resolve();
+      cam.unsubscribe(() => resolve(), true);
+      setTimeout(resolve, 4000);
+    } catch (err) {
+      resolve();
+    }
+  });
+}
+
+let parserCam = null;
+
+/** Turn the SOAP body a camera pushed at us into notification messages. */
+function parseNotificationXml(xml) {
+  return new Promise((resolve, reject) => {
+    if (!parserCam) parserCam = new Cam({ hostname: '127.0.0.1', autoconnect: false });
+    try {
+      parserCam.parseEventXML(xml, (err, result) => {
+        if (err) return reject(new Error((err && err.message) || String(err)));
+        if (!result) return resolve([]);
+        resolve(Array.isArray(result) ? result : [result]);
+      });
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 /* ------------------------------------------------------------------ events */
 
 const TYPE_RULES = [
@@ -315,5 +395,10 @@ module.exports = {
   getSnapshotUrl,
   normaliseUri,
   withCredentials,
+  subscribePush,
+  renewSubscription,
+  setSynchronizationPoint,
+  unsubscribeEvents,
+  parseNotificationXml,
   parseEvent,
 };

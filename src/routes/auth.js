@@ -3,6 +3,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const repo = require('../db/repo');
+const { getSetting, setSetting } = require('../db/index');
 const { config } = require('../config');
 const { createToken, cookieOptions, requireAuth } = require('../middleware/auth');
 const { createLogger } = require('../logger');
@@ -67,13 +68,29 @@ router.post('/password', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'Current password is incorrect' });
   }
   repo.users.updatePassword(user.id, bcrypt.hashSync(next, 10));
+  setSetting('default_admin_password', '0');
   res.cookie(config.cookieName, createToken(user), cookieOptions());
   res.json({ ok: true });
 });
 
 function warnings() {
   const list = [];
-  if (config.isDefaultSecret) list.push('APP_SECRET is still the default value – set it in your stack environment.');
+  if (config.isDefaultSecret) {
+    list.push('APP_SECRET is still the default value – set it in your stack environment.');
+  }
+  if (getSetting('default_admin_password', '0') === '1') {
+    list.push('This account still uses the default password – change it below in Settings.');
+  }
+  const tools = require('../services/ffmpeg').getToolStatus();
+  if (tools.ffmpeg && !tools.ffmpeg.ok) {
+    list.push(
+      `ffmpeg could not be started (${tools.ffmpeg.error}) – live view, recording and snapshots will not work. ` +
+        'Put the binary next to the app, in ./bin, or set FFMPEG_PATH.'
+    );
+  }
+  if (tools.ffprobe && !tools.ffprobe.ok) {
+    list.push('ffprobe was not found – recording durations are estimated. It ships with ffmpeg.');
+  }
   return list;
 }
 

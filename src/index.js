@@ -8,11 +8,14 @@ const cameraManager = require('./services/cameraManager');
 const recorder = require('./services/recorder');
 const streamHub = require('./services/streamHub');
 const retention = require('./services/retention');
+const ffmpeg = require('./services/ffmpeg');
 
 const log = createLogger('app');
 
 function main() {
   db.init();
+  // Report a missing/broken ffmpeg at startup rather than at the first event.
+  ffmpeg.checkTools().catch((err) => log.error(`could not check ffmpeg: ${err.message}`));
   cameraManager.init();
   retention.start();
 

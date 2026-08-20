@@ -48,6 +48,7 @@ yourself, replace `build: .` with your `image:` reference.
 | `HTTP_PORT`      | `8080`             | Host port published by the stack                                |
 | `TZ`             | `Europe/Bratislava`| Timezone for folder names and displayed times                   |
 | `SESSION_HOURS`  | `72`               | Session cookie lifetime                                         |
+| `PUBLIC_URL`     | auto-detected      | Address cameras POST events back to. **Required in Docker**, e.g. `http://192.168.1.10:8080` |
 | `LOG_LEVEL`      | `info`             | `error` \| `warn` \| `info` \| `debug`                          |
 
 Changing `APP_SECRET` later invalidates sessions and makes stored camera
@@ -91,7 +92,41 @@ container is killed mid-recording.
    Detection), otherwise the camera never sends notifications.
 
 The container needs network access to the camera on TCP **2020** (ONVIF) and
-**554** (RTSP). The default bridge network is fine.
+**554** (RTSP).
+
+### Events on Tapo: push, not pull
+
+Tapo firmware (verified on a **C325WB V2, firmware 1.3.2**) accepts a
+`CreatePullPointSubscription` and then **resets the TCP connection on every
+`PullMessages`** – that is the `socket hang up` you see with most ONVIF clients.
+It is not an authentication or addressing problem: a `GetSystemDateAndTime` sent
+to the very same subscription URL answers `HTTP 200`, while `PullMessages` is
+reset on any path, with or without WS-Addressing headers.
+
+What does work is the push mechanism (WS-BaseNotification): the camera POSTs
+notifications to a URL we hand it. The *Event delivery* setting on each camera
+controls this:
+
+| Mode | Behaviour |
+| --- | --- |
+| `auto` (default) | Try the pull point; if it fails before any event arrives, switch to push |
+| `pull` | Pull point only |
+| `push` | Push only – skip straight to a subscription |
+| `off` | Do not subscribe to events at all |
+
+In push mode the camera opens a connection **back to this server**, so it must
+be able to reach it:
+
+- On a flat LAN nothing is needed – the callback URL is derived from the local
+  address your traffic to that camera comes from.
+- **Behind Docker or NAT you must set `PUBLIC_URL`** (e.g.
+  `http://192.168.4.102:8080`) to an address the camera can reach, because a
+  bridged container's own IP is not routable from the camera.
+
+Use **Test events** on the Cameras page to check the whole path: it asks the
+camera to re-send its current detection state and reports whether anything
+arrived. Repeated notifications (cameras replay them after a re-subscription)
+are de-duplicated so they never record the same motion twice.
 
 ---
 
@@ -124,7 +159,11 @@ and/or keep the total under N GB, 0 disables), and the password change form.
 
 ## Local development
 
-Requires Node.js 20+ and ffmpeg on `PATH`.
+Requires Node.js 20+ and ffmpeg. The binary is looked up in `FFMPEG_PATH`, then
+next to the app, then in `./bin`, then on `PATH` – dropping `ffmpeg.exe` (and
+`ffprobe.exe`, which ships in the same archive) into the project folder is
+enough on Windows. The resolved path and version are logged at startup, and a
+missing binary is reported in the UI instead of failing silently later.
 
 ```bash
 npm install
@@ -175,6 +214,7 @@ DELETE /api/cameras/:id                           POST   /api/cameras/probe
 POST   /api/cameras/:id/refresh
 GET    /api/cameras/:id/snapshot                  POST   /api/cameras/:id/snapshot
 POST   /api/cameras/:id/recording/start | stop
+POST   /api/cameras/:id/events/test               POST   /onvif/notify/:id/:token  (cameras only)
 GET    /api/recordings                            GET    /api/recordings/:id
 GET    /api/recordings/:id/stream | download | thumbnail
 DELETE /api/recordings/:id                        POST   /api/recordings/delete
@@ -196,9 +236,15 @@ account. Recreate it in the app if unsure.
 **"Connection refused" / "unreachable"** – wrong ONVIF port (Tapo uses 2020, most
 other cameras 80 or 8000), or the container cannot reach the camera's subnet.
 
-**No events arrive** – detection must be enabled in the camera. Check the camera
-status on the Cameras page: `degraded` means the camera answered but rejected the
-event subscription. Set `LOG_LEVEL=debug` to log every notification.
+**No events arrive** – detection must be enabled in the camera, and in push mode
+the camera has to be able to reach this server (see *Events on Tapo* above). Hit
+**Test events** on the Cameras page for a verdict; if it reports nothing
+received, the callback URL it shows is not reachable from the camera – set
+`PUBLIC_URL`. Set `LOG_LEVEL=debug` to log every notification.
+
+**`socket hang up` in the log** – expected once per camera on Tapo firmware: the
+pull point is unusable and the app falls back to push automatically (`switching
+to push notifications`). Set *Event delivery* to `push` to skip the attempt.
 
 **Live view stays black** – the browser can only play H.264 through MediaSource.
 If the profile is H.265, switch the camera (or the selected profile) to H.264.

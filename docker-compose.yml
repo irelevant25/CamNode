@@ -23,9 +23,14 @@ services:
       TZ: "${TZ:-Europe/Bratislava}"
       DATA_DIR: /data
       APP_SECRET: "${APP_SECRET:-please-change-me}"
+      # Only applied when the database is created for the first time.
       ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
-      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-changeme}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-admin}"
       SESSION_HOURS: "${SESSION_HOURS:-72}"
+      # Cameras POST their ONVIF events back to this address. A bridged
+      # container IP is not reachable from a camera, so point this at the Docker
+      # host, e.g. http://192.168.1.10:8080
+      PUBLIC_URL: "${PUBLIC_URL:-}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
     volumes:
       # Database, recordings, snapshots and thumbnails all live here.

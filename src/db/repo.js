@@ -36,6 +36,8 @@ const CAMERA_FIELDS = [
   'snapshot_url',
   'profiles_json',
   'record_on_event',
+  'event_mode',
+  'notify_token',
   'event_record_seconds',
   'max_record_seconds',
   'record_audio',
@@ -50,8 +52,9 @@ function mapCamera(row) {
   camera.profiles = row.profiles_json ? safeJson(row.profiles_json, []) : [];
   camera.has_password = !!row.password_enc;
   delete camera.profiles_json;
-  // The encrypted blob never leaves the server.
+  // Neither the encrypted password nor the notification token leaves the server.
   delete camera.password_enc;
+  delete camera.notify_token;
   return camera;
 }
 
@@ -76,6 +79,26 @@ const cameras = {
     if (!row) return null;
     const camera = mapCamera(row);
     camera.password = decrypt(row.password_enc);
+    camera.notify_token = row.notify_token;
+    return camera;
+  },
+
+  /** Secret used in the push-notification URL the camera posts events to. */
+  ensureNotifyToken(id) {
+    const row = getDb().prepare('SELECT notify_token FROM cameras WHERE id = ?').get(id);
+    if (!row) return null;
+    if (row.notify_token) return row.notify_token;
+    const token = require('crypto').randomBytes(16).toString('hex');
+    getDb().prepare('UPDATE cameras SET notify_token = ? WHERE id = ?').run(token, id);
+    return token;
+  },
+
+  findByNotifyToken(token) {
+    const row = getDb().prepare('SELECT * FROM cameras WHERE notify_token = ?').get(token);
+    if (!row) return null;
+    const camera = mapCamera(row);
+    camera.password = decrypt(row.password_enc);
+    camera.notify_token = row.notify_token;
     return camera;
   },
   listWithSecret() {
@@ -85,6 +108,7 @@ const cameras = {
       .map((row) => {
         const camera = mapCamera(row);
         camera.password = decrypt(row.password_enc);
+        camera.notify_token = row.notify_token;
         return camera;
       });
   },
@@ -182,6 +206,10 @@ function normaliseCameraInput(input, existing) {
   if (input.snapshot_url !== undefined) data.snapshot_url = input.snapshot_url || null;
   if (input.profiles !== undefined) data.profiles_json = JSON.stringify(input.profiles || []);
   if (input.record_on_event !== undefined) data.record_on_event = boolInt(input.record_on_event, 1);
+  if (input.event_mode !== undefined) {
+    const mode = String(input.event_mode || 'auto');
+    data.event_mode = ['auto', 'pull', 'push', 'off'].indexOf(mode) !== -1 ? mode : 'auto';
+  }
   if (input.event_record_seconds !== undefined) {
     data.event_record_seconds = clamp(parseInt(input.event_record_seconds, 10) || 30, 5, 3600);
   }
@@ -226,6 +254,27 @@ const events = {
           WHERE e.id = ?`
       )
       .get(id);
+  },
+  /**
+   * Cameras re-deliver notifications after a re-subscription, so the same
+   * detection would otherwise be stored (and re-recorded) on every restart.
+   */
+  findDuplicate(event) {
+    return getDb()
+      .prepare(
+        `SELECT * FROM events
+          WHERE camera_id = ?
+            AND received_at = ?
+            AND IFNULL(topic, '') = IFNULL(?, '')
+            AND IFNULL(state, -1) = IFNULL(?, -1)
+          LIMIT 1`
+      )
+      .get(
+        event.camera_id,
+        event.received_at,
+        event.topic || null,
+        event.state === null || event.state === undefined ? null : event.state ? 1 : 0
+      );
   },
   linkRecording(eventId, recordingId) {
     getDb().prepare('UPDATE events SET recording_id = ? WHERE id = ?').run(recordingId, eventId);

@@ -1,6 +1,8 @@
 'use strict';
 
+const net = require('net');
 const repo = require('../db/repo');
+const { config } = require('../config');
 const onvif = require('./onvifClient');
 const recorder = require('./recorder');
 const streamHub = require('./streamHub');
@@ -12,6 +14,53 @@ const log = createLogger('cameras');
 const RECONNECT_BASE_MS = 15000;
 const RECONNECT_MAX_MS = 300000;
 const HEALTH_INTERVAL_MS = 60000;
+/** Subscriptions are created with a 2 minute lifetime; renew well before that. */
+const PUSH_RENEW_MS = 45000;
+/** A pull-point that dies this fast has never worked – fall back to push. */
+const PULL_GRACE_MS = 30000;
+
+/** Which local address do packets to this camera leave from? */
+function localAddressFor(host, port) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const socket = net.connect({ host, port: port || 80 }, () => {
+      const address = socket.localAddress;
+      socket.destroy();
+      done(address);
+    });
+    socket.setTimeout(5000, () => {
+      socket.destroy();
+      done(null);
+    });
+    socket.on('error', () => done(null));
+  });
+}
+
+function formatHost(address) {
+  const clean = String(address || '').replace(/^::ffff:/, '');
+  return clean.indexOf(':') !== -1 ? `[${clean}]` : clean;
+}
+
+/**
+ * URL a camera should POST its notifications to. `PUBLIC_URL` wins; otherwise
+ * we use the address our own traffic to that camera comes from, which is right
+ * on a flat LAN but not inside a bridged Docker network.
+ */
+async function consumerUrlFor(camera) {
+  const token = repo.cameras.ensureNotifyToken(camera.id);
+  let base = config.publicUrl;
+  if (!base) {
+    const address = await localAddressFor(camera.host, camera.onvif_port);
+    if (!address) throw new Error('could not work out a local address the camera can reach – set PUBLIC_URL');
+    base = `http://${formatHost(address)}:${config.port}`;
+  }
+  return `${base.replace(/\/+$/, '')}/onvif/notify/${camera.id}/${token}`;
+}
 
 /** cameraId -> CameraRuntime */
 const runtimes = new Map();
@@ -90,6 +139,15 @@ class CameraRuntime {
     this.eventHandler = null;
     this.eventsErrorHandler = null;
     this.lastEventAt = null;
+    /** 'pull' | 'push' | 'off' | null while starting up */
+    this.eventChannel = null;
+    this.eventChannelError = null;
+    this.pullStartedAt = null;
+    this.pullEventSeen = false;
+    this.pushRenewTimer = null;
+    this.consumerUrl = null;
+    this.pushCount = 0;
+    this.lastPushAt = null;
   }
 
   async start() {
@@ -112,7 +170,7 @@ class CameraRuntime {
       this.cam = cam;
       this.attempts = 0;
       this.setStatus('online', null);
-      this.subscribeEvents(cam);
+      this.startEvents(camera, cam);
       this.startHealthChecks();
       log.info(`camera ${this.cameraId} (${camera.name}) connected`);
     } catch (err) {
@@ -122,34 +180,149 @@ class CameraRuntime {
     }
   }
 
-  subscribeEvents(cam) {
+  /* ------------------------------------------------------------- events */
+
+  startEvents(camera, cam) {
+    const mode = camera.event_mode || 'auto';
+    if (mode === 'off') {
+      this.eventChannel = 'off';
+      log.info(`camera ${this.cameraId}: event notifications disabled`);
+      return;
+    }
+    if (mode === 'push') return this.startPush();
+    this.startPull();
+  }
+
+  /**
+   * PullPoint: the onvif client creates the subscription as soon as an 'event'
+   * listener exists and keeps polling by itself.
+   */
+  startPull() {
+    const cam = this.cam;
+    if (!cam || this.eventHandler) return;
+    this.eventChannel = 'pull';
+    this.pullStartedAt = Date.now();
+    this.pullEventSeen = false;
+
     this.eventHandler = (message) => {
+      this.pullEventSeen = true;
+      this.eventChannelError = null;
       try {
         this.handleEvent(message);
       } catch (err) {
         log.error(`camera ${this.cameraId}: failed to handle event: ${err.message}`);
       }
     };
-    this.eventsErrorHandler = (err) => {
-      log.warn(`camera ${this.cameraId}: ONVIF event error: ${(err && err.message) || err}`);
-      this.setStatus('degraded', `Event subscription failed: ${(err && err.message) || err}`);
-      this.teardownConnection();
-      this.scheduleReconnect();
-    };
-    // Adding an 'event' listener makes the onvif client create (and renew) a
-    // PullPoint subscription on the camera.
+    this.eventsErrorHandler = (err) => this.onPullError(err);
     cam.on('event', this.eventHandler);
     cam.on('eventsError', this.eventsErrorHandler);
+    log.debug(`camera ${this.cameraId}: listening for events via pull point`);
+  }
+
+  stopPull() {
+    if (this.cam) {
+      if (this.eventHandler) this.cam.removeListener('event', this.eventHandler);
+      if (this.eventsErrorHandler) this.cam.removeListener('eventsError', this.eventsErrorHandler);
+    }
+    this.eventHandler = null;
+    this.eventsErrorHandler = null;
+  }
+
+  /**
+   * The onvif client retries pull failures on its own, so a single error is not
+   * fatal and must not tear the connection down. What it cannot do is notice
+   * that a camera never supports PullMessages at all – that is what the
+   * fallback below is for (Tapo resets the connection on every pull).
+   */
+  onPullError(err) {
+    const message = (err && err.message) || String(err);
+    this.eventChannelError = message;
+    const camera = repo.cameras.get(this.cameraId);
+    const mode = (camera && camera.event_mode) || 'auto';
+    const young = Date.now() - this.pullStartedAt < PULL_GRACE_MS;
+
+    if (mode === 'auto' && !this.pullEventSeen && young) {
+      log.info(
+        `camera ${this.cameraId}: pull point not usable (${message}), switching to push notifications`
+      );
+      this.stopPull();
+      this.startPush();
+      return;
+    }
+    log.warn(`camera ${this.cameraId}: ONVIF event error: ${message}`);
+    this.setStatus('degraded', `Event subscription problem: ${message}`);
+  }
+
+  /**
+   * WS-BaseNotification: we hand the camera a URL and it POSTs events to us.
+   */
+  async startPush() {
+    const cam = this.cam;
+    if (!cam || this.stopped) return;
+    this.eventChannel = 'push';
+    try {
+      const camera = repo.cameras.getWithSecret(this.cameraId);
+      if (!camera) return;
+      this.consumerUrl = await consumerUrlFor(camera);
+      await onvif.subscribePush(cam, this.consumerUrl);
+      if (this.stopped) return;
+      this.eventChannelError = null;
+      this.setStatus('online', null);
+      log.info(`camera ${this.cameraId}: subscribed for push notifications to ${this.consumerUrl}`);
+      this.schedulePushRenew();
+      // Makes the camera report the current state of every property straight
+      // away, so a working subscription shows up in the log immediately.
+      onvif
+        .setSynchronizationPoint(cam)
+        .then(() => log.debug(`camera ${this.cameraId}: synchronization point requested`))
+        .catch((err) => log.debug(`camera ${this.cameraId}: synchronization point failed: ${err.message}`));
+    } catch (err) {
+      this.eventChannelError = err.message;
+      log.warn(`camera ${this.cameraId}: push subscription failed: ${err.message}`);
+      this.setStatus('degraded', `Could not subscribe for events: ${err.message}`);
+    }
+  }
+
+  schedulePushRenew() {
+    this.stopPushRenew();
+    this.pushRenewTimer = setInterval(() => {
+      if (!this.cam || this.stopped) return;
+      onvif.renewSubscription(this.cam).catch((err) => {
+        log.warn(`camera ${this.cameraId}: renewing the subscription failed (${err.message}), resubscribing`);
+        this.stopPushRenew();
+        this.startPush();
+      });
+    }, PUSH_RENEW_MS);
+  }
+
+  stopPushRenew() {
+    if (this.pushRenewTimer) clearInterval(this.pushRenewTimer);
+    this.pushRenewTimer = null;
+  }
+
+  /** Called by the /onvif/notify endpoint for every pushed notification. */
+  async handlePushBody(xml) {
+    this.pushCount += 1;
+    this.lastPushAt = new Date();
+    const messages = await onvif.parseNotificationXml(xml);
+    let handled = 0;
+    for (const message of messages) {
+      try {
+        if (this.handleEvent(message)) handled += 1;
+      } catch (err) {
+        log.error(`camera ${this.cameraId}: failed to handle pushed event: ${err.message}`);
+      }
+    }
+    return handled;
   }
 
   handleEvent(message) {
     const parsed = onvif.parseEvent(message);
-    if (!parsed) return;
+    if (!parsed) return false;
     const camera = repo.cameras.getWithSecret(this.cameraId);
-    if (!camera) return;
+    if (!camera) return false;
 
-    this.lastEventAt = new Date();
-    const stored = repo.events.create({
+    const incoming = {
       camera_id: this.cameraId,
       topic: parsed.topic,
       type: parsed.type,
@@ -158,16 +331,26 @@ class CameraRuntime {
       source: parsed.source,
       raw: parsed.raw,
       received_at: parsed.received_at,
-    });
+    };
+
+    // A camera replays its recent notifications whenever we re-subscribe.
+    // Storing those again would also re-trigger a recording for old motion.
+    if (repo.events.findDuplicate(incoming)) {
+      log.debug(`camera ${this.cameraId}: ignoring repeated notification (${parsed.topic} @ ${parsed.received_at})`);
+      return false;
+    }
+
+    this.lastEventAt = new Date();
+    const stored = repo.events.create(incoming);
     log.debug(`camera ${this.cameraId}: ${parsed.label} (state=${parsed.state})`);
     publish('event:created', { camera_id: this.cameraId, event: stored });
     repo.cameras.setStatus(this.cameraId, 'online', null);
 
-    if (!camera.record_on_event) return;
+    if (!camera.record_on_event) return true;
     const initial = parsed.raw && parsed.raw.propertyOperation === 'Initialized';
     const isTrigger = parsed.state === true || (parsed.state === null && !initial);
     const active = recorder.getActive(this.cameraId);
-    if (!isTrigger && !active) return;
+    if (!isTrigger && !active) return true;
 
     try {
       const ready = withCredentials(camera);
@@ -179,6 +362,31 @@ class CameraRuntime {
     } catch (err) {
       log.error(`camera ${this.cameraId}: could not start event recording: ${err.message}`);
     }
+    return true;
+  }
+
+  /**
+   * Prove the event path end to end: ask the camera to re-send the current
+   * property state and see whether anything actually reaches us.
+   */
+  async testEvents() {
+    if (!this.cam) throw new Error('Camera is not connected');
+    if (this.eventChannel === 'off') throw new Error('Event notifications are disabled for this camera');
+
+    const before = this.pushCount;
+    const beforeEventAt = this.lastEventAt ? this.lastEventAt.getTime() : 0;
+    await onvif.setSynchronizationPoint(this.cam);
+
+    await new Promise((resolve) => setTimeout(resolve, 6000));
+    const pushed = this.pushCount - before;
+    const gotEvent = this.lastEventAt && this.lastEventAt.getTime() > beforeEventAt;
+    return {
+      channel: this.eventChannel,
+      consumer_url: this.consumerUrl,
+      notifications_received: pushed,
+      event_stored: !!gotEvent,
+      ok: pushed > 0 || !!gotEvent,
+    };
   }
 
   startHealthChecks() {
@@ -215,13 +423,20 @@ class CameraRuntime {
     log.debug(`camera ${this.cameraId}: reconnecting in ${Math.round(delay / 1000)}s`);
   }
 
-  teardownConnection() {
+  teardownConnection(options) {
+    const opts = options || {};
     this.stopHealthChecks();
-    if (this.cam) {
+    this.stopPushRenew();
+    const cam = this.cam;
+    if (cam) {
+      // Tell the camera to drop a push subscription so it stops posting to a
+      // URL we no longer serve.
+      if (opts.unsubscribe && this.eventChannel === 'push') {
+        onvif.unsubscribeEvents(cam).catch(() => null);
+      }
       try {
-        if (this.eventHandler) this.cam.removeListener('event', this.eventHandler);
-        if (this.eventsErrorHandler) this.cam.removeListener('eventsError', this.eventsErrorHandler);
-        this.cam.removeAllListeners('error');
+        this.stopPull();
+        cam.removeAllListeners('error');
       } catch (err) {
         /* ignore */
       }
@@ -240,7 +455,7 @@ class CameraRuntime {
     this.stopped = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
-    this.teardownConnection();
+    this.teardownConnection({ unsubscribe: true });
     runtimes.delete(this.cameraId);
   }
 
@@ -250,6 +465,11 @@ class CameraRuntime {
       connected: !!this.cam,
       last_event_at: this.lastEventAt ? this.lastEventAt.toISOString() : null,
       reconnect_attempts: this.attempts,
+      event_channel: this.eventChannel,
+      event_channel_error: this.eventChannelError,
+      consumer_url: this.consumerUrl,
+      notifications_received: this.pushCount,
+      last_notification_at: this.lastPushAt ? this.lastPushAt.toISOString() : null,
     };
   }
 }
@@ -283,6 +503,39 @@ function reload(cameraId) {
   }
 }
 
+/**
+ * Entry point for the unauthenticated /onvif/notify endpoint. The token in the
+ * URL is what proves the notification belongs to that camera's subscription.
+ */
+async function handlePushNotification(cameraId, token, xml, remoteAddress) {
+  const camera = repo.cameras.getWithSecret(cameraId);
+  if (!camera || !camera.notify_token || !safeEqual(camera.notify_token, token)) {
+    return { ok: false, reason: 'unknown subscription' };
+  }
+  if (remoteAddress && camera.host && formatHost(remoteAddress) !== camera.host) {
+    log.debug(
+      `camera ${cameraId}: notification came from ${formatHost(remoteAddress)} but the camera is ${camera.host}`
+    );
+  }
+  const runtime = runtimes.get(cameraId);
+  if (!runtime) return { ok: false, reason: 'camera is not being monitored' };
+  const handled = await runtime.handlePushBody(xml);
+  return { ok: true, handled };
+}
+
+function safeEqual(a, b) {
+  const left = Buffer.from(String(a || ''));
+  const right = Buffer.from(String(b || ''));
+  if (left.length !== right.length || !left.length) return false;
+  return require('crypto').timingSafeEqual(left, right);
+}
+
+async function testEvents(cameraId) {
+  const runtime = runtimes.get(cameraId);
+  if (!runtime) throw new Error('Camera is not being monitored – enable it first');
+  return runtime.testEvents();
+}
+
 function runtimeInfo() {
   const out = {};
   for (const [id, runtime] of runtimes) out[id] = runtime.info();
@@ -312,4 +565,7 @@ module.exports = {
   withCredentials,
   probe,
   runtimeInfo,
+  handlePushNotification,
+  consumerUrlFor,
+  testEvents,
 };

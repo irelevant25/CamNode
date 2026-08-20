@@ -17,6 +17,8 @@ function decorate(camera) {
   return Object.assign({}, camera, {
     connected: runtime ? runtime.connected : false,
     last_event_at: runtime ? runtime.last_event_at : null,
+    event_channel: runtime ? runtime.event_channel : null,
+    event_channel_error: runtime ? runtime.event_channel_error : null,
     active_recording: recorder.getActive(camera.id),
     live_viewers: streamHub
       .stats()
@@ -103,6 +105,21 @@ router.post('/:id/refresh', async (req, res) => {
     res.json({ camera: decorate(repo.cameras.get(id)) });
   } catch (err) {
     repo.cameras.setStatus(id, 'offline', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * Ask the camera to re-send its current detection state, then report whether
+ * anything reached us. Confirms the whole event path without waiting for motion.
+ */
+router.post('/:id/events/test', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!repo.cameras.get(id)) return res.status(404).json({ error: 'Camera not found' });
+  try {
+    const result = await cameraManager.testEvents(id);
+    res.json(result);
+  } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });

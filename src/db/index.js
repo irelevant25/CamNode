@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS cameras (
   snapshot_url         TEXT,
   profiles_json        TEXT,
   record_on_event      INTEGER NOT NULL DEFAULT 1,
+  event_mode           TEXT NOT NULL DEFAULT 'auto',
+  notify_token         TEXT,
   event_record_seconds INTEGER NOT NULL DEFAULT 30,
   max_record_seconds   INTEGER NOT NULL DEFAULT 900,
   record_audio         INTEGER NOT NULL DEFAULT 1,
@@ -117,10 +119,35 @@ function init() {
     insertSetting.run(key, DEFAULT_SETTINGS[key]);
   }
 
+  migrate();
   bootstrapAdmin();
   recoverInterruptedRecordings();
   log.info(`database ready at ${config.dbFile}`);
   return db;
+}
+
+/**
+ * Add columns introduced after a database was first created. SQLite only
+ * supports ADD COLUMN, which is all we need so far.
+ */
+function migrate() {
+  const ADDITIONS = {
+    cameras: [
+      ['event_mode', "TEXT NOT NULL DEFAULT 'auto'"],
+      ['notify_token', 'TEXT'],
+    ],
+  };
+  for (const table of Object.keys(ADDITIONS)) {
+    const existing = db
+      .prepare(`PRAGMA table_info(${table})`)
+      .all()
+      .map((column) => column.name);
+    for (const [name, definition] of ADDITIONS[table]) {
+      if (existing.indexOf(name) !== -1) continue;
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+      log.info(`migrated: added ${table}.${name}`);
+    }
+  }
 }
 
 function bootstrapAdmin() {
@@ -131,9 +158,18 @@ function bootstrapAdmin() {
     config.admin.username,
     hash
   );
-  log.warn(
-    `created initial admin user "${config.admin.username}" – change the password after first login`
-  );
+  if (config.admin.isDefaultPassword) {
+    setSetting('default_admin_password', '1');
+    log.warn(
+      `created initial user "${config.admin.username}" with the default password "${config.admin.password}" ` +
+        '– ADMIN_PASSWORD was not set. Sign in and change it under Settings.'
+    );
+  } else {
+    log.warn(
+      `created initial user "${config.admin.username}" with the password from ADMIN_PASSWORD ` +
+        '– change it after the first login'
+    );
+  }
 }
 
 /**

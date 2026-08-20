@@ -3,6 +3,22 @@
 const path = require('path');
 const fs = require('fs');
 
+// Load a .env file next to package.json when running outside Docker. Real
+// environment variables (what Portainer sets) always win over the file.
+(function loadDotEnv() {
+  const envFile = path.join(__dirname, '..', '.env');
+  if (!fs.existsSync(envFile) || typeof process.loadEnvFile !== 'function') return;
+  const before = Object.assign({}, process.env);
+  try {
+    process.loadEnvFile(envFile);
+    for (const key of Object.keys(before)) {
+      if (before[key] !== undefined) process.env[key] = before[key];
+    }
+  } catch (err) {
+    console.warn(`could not read .env: ${err.message}`);
+  }
+})();
+
 function env(name, fallback) {
   const value = process.env[name];
   if (value === undefined || value === null || value === '') return fallback;
@@ -28,12 +44,18 @@ const config = {
   admin: {
     username: env('ADMIN_USERNAME', 'admin'),
     password: env('ADMIN_PASSWORD', 'admin'),
+    isDefaultPassword: !env('ADMIN_PASSWORD', ''),
   },
   sessionHours: int('SESSION_HOURS', 72),
   ffmpegPath: env('FFMPEG_PATH', 'ffmpeg'),
   ffprobePath: env('FFPROBE_PATH', 'ffprobe'),
   logLevel: env('LOG_LEVEL', 'info'),
   cookieName: 'cr_session',
+  // Base URL the cameras use to POST event notifications back to us (push
+  // mode). Leave empty to auto-detect the local address facing each camera –
+  // that works on a LAN but not from a bridged Docker network, where you have
+  // to point this at the host, e.g. http://192.168.4.102:8080
+  publicUrl: env('PUBLIC_URL', ''),
   // live stream tuning
   live: {
     idleShutdownMs: int('LIVE_IDLE_SHUTDOWN_MS', 10000),

@@ -59,6 +59,7 @@ router.get('/stats', (req, res) => {
     active_recordings: recorder.listActive(),
     live_streams: streamHub.stats(),
     data_dir: config.dataDir,
+    tools: require('../services/ffmpeg').getToolStatus(),
     uptime_seconds: Math.round(process.uptime()),
     version: require('../../package.json').version,
   });
