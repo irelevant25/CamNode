@@ -140,11 +140,39 @@ are de-duplicated so they never record the same motion twice.
 | Go live       | Rebuilds the buffer at the live edge (also reconnects a dropped stream)        |
 | Snapshot      | Saves the displayed frame; falls back to a fresh grab from the camera if the player has no frame yet |
 | Record        | Starts/stops a manual recording of the main stream                             |
-| Sub / Main    | Which profile to watch. Sub is lighter, main is full resolution                |
+| Image         | Picture adjustments – see below                                                |
+| − / + / Reset | Zoom. The wheel (or a pinch) zooms around the cursor, dragging moves a zoomed picture, double click resets |
+| Sub / Main    | Which of the camera's two streams to watch                                     |
 | ⛶             | Fullscreen                                                                     |
 
-Clicking the picture also toggles pause. A manual recording started while an
-event recording is running takes over, so it will not stop on the event timer.
+Every control, filter and form field carries a tooltip explaining what it does
+and what is expected – hover if something is unclear.
+
+**Sub stream vs main stream.** ONVIF cameras publish the same scene as several
+"profiles". The Tapo publishes two: a full resolution **main** stream (2560×1440)
+and a small **sub** stream (VGA). Recordings always use main, so nothing is lost.
+The live view defaults to sub because it is far lighter on the network and on the
+camera's limited number of simultaneous connections – useful when watching over a
+slow or remote link. Switch to main when you want full detail on screen. It only
+changes what your browser receives, never what is recorded.
+
+A manual recording started while an event recording is running takes over, so it
+will not stop on the event timer.
+
+### Picture adjustments
+
+The **Image** button offers two independent sets of controls:
+
+- **This preview only** – brightness, contrast, saturation and a real gamma
+  curve, applied by your browser to the picture on screen. Nothing is sent to
+  the camera, recordings keep the original image, and the values are remembered
+  per camera in that browser. Gamma is the useful one for a dark scene: it lifts
+  the shadows without blowing out the bright areas.
+- **Camera settings** – the ONVIF imaging values stored in the camera itself
+  (the C325WB exposes brightness, saturation, contrast and sharpness, 0–100).
+  These change what the sensor produces, so they affect recordings and every
+  viewer, and they persist across reboots. Cameras that expose no imaging
+  service simply show a note instead.
 
 **Recordings** – filter by camera, trigger, status and time; play in place,
 download, delete one or many.
@@ -215,6 +243,7 @@ POST   /api/cameras/:id/refresh
 GET    /api/cameras/:id/snapshot                  POST   /api/cameras/:id/snapshot
 POST   /api/cameras/:id/recording/start | stop
 POST   /api/cameras/:id/events/test               POST   /onvif/notify/:id/:token  (cameras only)
+GET    /api/cameras/:id/imaging                   PUT    /api/cameras/:id/imaging
 GET    /api/recordings                            GET    /api/recordings/:id
 GET    /api/recordings/:id/stream | download | thumbnail
 DELETE /api/recordings/:id                        POST   /api/recordings/delete

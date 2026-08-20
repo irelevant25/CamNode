@@ -530,6 +530,25 @@ function safeEqual(a, b) {
   return require('crypto').timingSafeEqual(left, right);
 }
 
+/** Run something against a connected Cam, reusing the monitored one if there is one. */
+async function withCam(cameraId, fn) {
+  const runtime = runtimes.get(cameraId);
+  if (runtime && runtime.cam) return fn(runtime.cam);
+  const camera = repo.cameras.getWithSecret(cameraId);
+  if (!camera) throw new Error('Camera not found');
+  const cam = await onvif.connect(camera, 12000);
+  return fn(cam);
+}
+
+function getImaging(cameraId) {
+  return withCam(cameraId, (cam) => onvif.getImaging(cam));
+}
+
+async function setImaging(cameraId, values) {
+  await withCam(cameraId, (cam) => onvif.setImaging(cam, values));
+  return withCam(cameraId, (cam) => onvif.getImaging(cam));
+}
+
 async function testEvents(cameraId) {
   const runtime = runtimes.get(cameraId);
   if (!runtime) throw new Error('Camera is not being monitored – enable it first');
@@ -568,4 +587,6 @@ module.exports = {
   handlePushNotification,
   consumerUrlFor,
   testEvents,
+  getImaging,
+  setImaging,
 };

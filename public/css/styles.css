@@ -522,6 +522,55 @@ label {
   font-variant-numeric: tabular-nums;
 }
 
+/* ------------------------------------------------------ image adjustments */
+
+.slider-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 58px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.slider-row label {
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.slider-row output {
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.slider-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  background: transparent;
+}
+
+.section-note {
+  color: var(--text-faint);
+  font-size: 12.5px;
+  margin: 0 0 14px;
+}
+
+.modal-section {
+  border-top: 1px solid var(--border);
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.modal-section:first-child {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
 .live-extras {
   display: grid;
   grid-template-columns: 1fr 1fr;

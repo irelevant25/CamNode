@@ -110,6 +110,30 @@ router.post('/:id/refresh', async (req, res) => {
 });
 
 /**
+ * Image settings held by the camera itself (ONVIF imaging). Changing these
+ * changes the picture the sensor produces, so it affects recordings too.
+ */
+router.get('/:id/imaging', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!repo.cameras.get(id)) return res.status(404).json({ error: 'Camera not found' });
+  try {
+    res.json(await cameraManager.getImaging(id));
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+router.put('/:id/imaging', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!repo.cameras.get(id)) return res.status(404).json({ error: 'Camera not found' });
+  try {
+    res.json(await cameraManager.setImaging(id, req.body || {}));
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+/**
  * Ask the camera to re-send its current detection state, then report whether
  * anything reached us. Confirms the whole event path without waiting for motion.
  */

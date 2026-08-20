@@ -18,17 +18,17 @@
           Camera Recordings
         </div>
         <nav class="nav" id="nav">
-          <button data-view="live" class="active">Live</button>
-          <button data-view="recordings">Recordings</button>
-          <button data-view="events">Events</button>
-          <button data-view="snapshots">Snapshots</button>
-          <button data-view="cameras">Cameras</button>
-          <button data-view="settings">Settings</button>
+          <button data-view="live" class="active" title="Watch a camera live, record manually and take snapshots">Live</button>
+          <button data-view="recordings" title="Browse, play, download and delete stored recordings">Recordings</button>
+          <button data-view="events" title="Every detection notification the cameras have sent">Events</button>
+          <button data-view="snapshots" title="Still images saved from the live view">Snapshots</button>
+          <button data-view="cameras" title="Add, edit and test cameras">Cameras</button>
+          <button data-view="settings" title="Storage retention, disk usage and your password">Settings</button>
         </nav>
         <div class="topbar-right">
-          <span class="ws-dot" id="ws-dot" title="Live updates"></span>
-          <span id="user-name" class="muted"></span>
-          <button class="btn sm" id="logout">Sign out</button>
+          <span class="ws-dot" id="ws-dot" title="Green when this page is receiving live updates (events, recording state) from the server"></span>
+          <span id="user-name" class="muted" title="Signed in user"></span>
+          <button class="btn sm" id="logout" title="Sign out and return to the login page">Sign out</button>
         </div>
       </header>
 
@@ -48,22 +48,23 @@
                 </div>
                 <div class="player-controls">
                   <div class="badges" id="live-badges"></div>
-                  <button class="btn" id="btn-pause" disabled>Pause</button>
-                  <button class="btn" id="btn-golive" disabled>Go live</button>
-                  <button class="btn" id="btn-snapshot" disabled>Snapshot</button>
-                  <button class="btn rec" id="btn-record" disabled>Record</button>
+                  <button class="btn" id="btn-pause" title="Freeze on the current frame. Video that arrives while paused is discarded, so resuming jumps back to now" disabled>Pause</button>
+                  <button class="btn" id="btn-golive" title="Jump back to the newest frame. Also reconnects a stream that dropped" disabled>Go live</button>
+                  <button class="btn" id="btn-snapshot" title="Save the frame you are looking at as a JPEG in Snapshots. Falls back to a fresh grab from the camera if the player has no frame yet" disabled>Snapshot</button>
+                  <button class="btn rec" id="btn-record" title="Start or stop recording this camera by hand. Manual recordings run until you stop them, unlike event recordings" disabled>Record</button>
                   <span class="spacer"></span>
+                  <button class="btn" id="btn-image" title="Adjust the picture: brightness, contrast and more, either only for this preview or on the camera itself" disabled>Image</button>
                   <span class="zoom-group">
                     <button class="btn icon" id="btn-zoom-out" title="Zoom out" disabled>&minus;</button>
-                    <span class="zoom-level" id="zoom-level">1.0&times;</span>
-                    <button class="btn icon" id="btn-zoom-in" title="Zoom in (scroll wheel on the picture)">+</button>
-                    <button class="btn sm" id="btn-zoom-reset" title="Reset zoom (double click)" disabled>Reset</button>
+                    <span class="zoom-level" id="zoom-level" title="Current zoom level">1.0&times;</span>
+                    <button class="btn icon" id="btn-zoom-in" title="Zoom in. You can also scroll the wheel over the picture, or pinch on a touch screen">+</button>
+                    <button class="btn sm" id="btn-zoom-reset" title="Back to the full picture. Double clicking the video does the same" disabled>Reset</button>
                   </span>
-                  <select id="quality" title="Stream quality">
-                    <option value="sub">Sub stream</option>
-                    <option value="main">Main stream</option>
+                  <select id="quality" title="Which of the camera's two streams to watch. Sub is a small, low bandwidth copy meant for viewing; Main is the full resolution stream that recordings always use.">
+                    <option value="sub" title="Low resolution copy - lighter on the network and on the camera">Sub stream (low resolution)</option>
+                    <option value="main" title="Full resolution stream, the same one recordings use">Main stream (full resolution)</option>
                   </select>
-                  <button class="btn icon" id="btn-fullscreen" title="Fullscreen">⛶</button>
+                  <button class="btn icon" id="btn-fullscreen" title="Fullscreen (Esc to leave)">⛶</button>
                 </div>
               </div>
 
@@ -91,17 +92,17 @@
           <div class="view-head">
             <h1>Recordings</h1>
             <div>
-              <button class="btn danger" id="rec-delete-selected" disabled>Delete selected</button>
+              <button class="btn danger" id="rec-delete-selected" title="Permanently delete every ticked recording, including its file on disk" disabled>Delete selected</button>
             </div>
           </div>
           <div class="filters">
             <div class="field">
               <label>Camera</label>
-              <select id="rec-filter-camera"><option value="">All cameras</option></select>
+              <select id="rec-filter-camera" title="Show recordings from one camera only"><option value="">All cameras</option></select>
             </div>
             <div class="field">
               <label>Trigger</label>
-              <select id="rec-filter-trigger">
+              <select id="rec-filter-trigger" title="What started the recording: a detection event from the camera, or you pressing Record">
                 <option value="">All</option>
                 <option value="event">Event</option>
                 <option value="manual">Manual</option>
@@ -109,7 +110,7 @@
             </div>
             <div class="field">
               <label>Status</label>
-              <select id="rec-filter-status">
+              <select id="rec-filter-status" title="Completed finished normally, Recording is still running, Failed wrote no usable video, Interrupted was cut short by a restart">
                 <option value="">All</option>
                 <option value="completed">Completed</option>
                 <option value="recording">Recording</option>
@@ -119,20 +120,20 @@
             </div>
             <div class="field">
               <label>From</label>
-              <input type="datetime-local" id="rec-filter-from" />
+              <input type="datetime-local" id="rec-filter-from" title="Only recordings that started at or after this moment. Leave empty for no lower bound" />
             </div>
             <div class="field">
               <label>To</label>
-              <input type="datetime-local" id="rec-filter-to" />
+              <input type="datetime-local" id="rec-filter-to" title="Only recordings that started at or before this moment. Leave empty for no upper bound" />
             </div>
-            <button class="btn" id="rec-apply">Apply</button>
-            <button class="btn" id="rec-reset">Reset</button>
+            <button class="btn" id="rec-apply" title="Run the search with the filters above">Apply</button>
+            <button class="btn" id="rec-reset" title="Clear all filters and show everything again">Reset</button>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th style="width: 30px"><input type="checkbox" id="rec-select-all" /></th>
+                  <th style="width: 30px"><input type="checkbox" id="rec-select-all" title="Tick every recording on this page" /></th>
                   <th style="width: 110px">Preview</th>
                   <th>Camera</th>
                   <th>Started</th>
@@ -147,10 +148,10 @@
             </table>
           </div>
           <div class="pager">
-            <span id="rec-summary"></span>
+            <span id="rec-summary" title="Recordings shown on this page, the total that match the filters, and how much disk they use"></span>
             <span>
-              <button class="btn sm" id="rec-prev">Previous</button>
-              <button class="btn sm" id="rec-next">Next</button>
+              <button class="btn sm" id="rec-prev" title="Previous page">Previous</button>
+              <button class="btn sm" id="rec-next" title="Next page">Next</button>
             </span>
           </div>
         </section>
@@ -160,38 +161,38 @@
           <div class="view-head">
             <h1>Events</h1>
             <div>
-              <button class="btn danger" id="ev-delete-selected" disabled>Delete selected</button>
-              <button class="btn danger" id="ev-clear">Clear all</button>
+              <button class="btn danger" id="ev-delete-selected" title="Delete every ticked event. Recordings they started are kept" disabled>Delete selected</button>
+              <button class="btn danger" id="ev-clear" title="Delete all stored events, or all events of the camera selected in the filter below">Clear all</button>
             </div>
           </div>
           <div class="filters">
             <div class="field">
               <label>Camera</label>
-              <select id="ev-filter-camera"><option value="">All cameras</option></select>
+              <select id="ev-filter-camera" title="Show events from one camera only. Also decides which camera Clear all applies to"><option value="">All cameras</option></select>
             </div>
             <div class="field">
               <label>Type</label>
-              <select id="ev-filter-type"><option value="">All types</option></select>
+              <select id="ev-filter-type" title="Kind of detection, e.g. motion or person. The list is built from what your cameras have actually sent"><option value="">All types</option></select>
             </div>
             <div class="field">
               <label>From</label>
-              <input type="datetime-local" id="ev-filter-from" />
+              <input type="datetime-local" id="ev-filter-from" title="Only events received at or after this moment" />
             </div>
             <div class="field">
               <label>To</label>
-              <input type="datetime-local" id="ev-filter-to" />
+              <input type="datetime-local" id="ev-filter-to" title="Only events received at or before this moment" />
             </div>
             <div class="field">
-              <label class="checkbox"><input type="checkbox" id="ev-only-starts" /> Only triggers</label>
+              <label class="checkbox" title="Cameras send an event when detection starts and another when it ends. Tick this to hide the end ones."><input type="checkbox" id="ev-only-starts" /> Only triggers</label>
             </div>
-            <button class="btn" id="ev-apply">Apply</button>
-            <button class="btn" id="ev-reset">Reset</button>
+            <button class="btn" id="ev-apply" title="Run the search with the filters above">Apply</button>
+            <button class="btn" id="ev-reset" title="Clear all filters and show everything again">Reset</button>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th style="width: 30px"><input type="checkbox" id="ev-select-all" /></th>
+                  <th style="width: 30px"><input type="checkbox" id="ev-select-all" title="Tick every event on this page" /></th>
                   <th>Time</th>
                   <th>Camera</th>
                   <th>Event</th>
@@ -205,10 +206,10 @@
             </table>
           </div>
           <div class="pager">
-            <span id="ev-summary"></span>
+            <span id="ev-summary" title="Events shown on this page and the total that match the filters"></span>
             <span>
-              <button class="btn sm" id="ev-prev">Previous</button>
-              <button class="btn sm" id="ev-next">Next</button>
+              <button class="btn sm" id="ev-prev" title="Previous page">Previous</button>
+              <button class="btn sm" id="ev-next" title="Next page">Next</button>
             </span>
           </div>
         </section>
@@ -219,16 +220,16 @@
             <h1>Snapshots</h1>
             <div class="filters" style="margin: 0; padding: 8px">
               <div class="field">
-                <select id="snap-filter-camera"><option value="">All cameras</option></select>
+                <select id="snap-filter-camera" title="Show snapshots from one camera only"><option value="">All cameras</option></select>
               </div>
             </div>
           </div>
-          <div class="snapshot-grid" id="snap-grid"></div>
+          <div class="snapshot-grid" id="snap-grid" title="Click a picture to see it full size"></div>
           <div class="pager">
-            <span id="snap-summary"></span>
+            <span id="snap-summary" title="Snapshots shown on this page and the total stored"></span>
             <span>
-              <button class="btn sm" id="snap-prev">Previous</button>
-              <button class="btn sm" id="snap-next">Next</button>
+              <button class="btn sm" id="snap-prev" title="Previous page">Previous</button>
+              <button class="btn sm" id="snap-next" title="Next page">Next</button>
             </span>
           </div>
         </section>
@@ -237,7 +238,7 @@
         <section class="view" id="view-cameras">
           <div class="view-head">
             <h1>Cameras</h1>
-            <button class="btn primary" id="camera-add">Add camera</button>
+            <button class="btn primary" id="camera-add" title="Connect another ONVIF camera by IP address and port">Add camera</button>
           </div>
           <div class="camera-grid" id="camera-grid"></div>
         </section>
@@ -255,35 +256,35 @@
               </p>
               <div class="field">
                 <label>Delete recordings older than (days)</label>
-                <input type="number" min="0" step="1" id="set-retention-days" />
+                <input type="number" min="0" step="1" id="set-retention-days" title="Recordings older than this many days are deleted automatically. 0 keeps them forever." />
               </div>
               <div class="field">
                 <label>Keep total recordings under (GB)</label>
-                <input type="number" min="0" step="0.5" id="set-retention-gb" />
+                <input type="number" min="0" step="0.5" id="set-retention-gb" title="When recordings exceed this size, the oldest are deleted until they fit. 0 means no size limit." />
               </div>
               <div class="field">
                 <label>Delete events older than (days)</label>
-                <input type="number" min="0" step="1" id="set-event-days" />
+                <input type="number" min="0" step="1" id="set-event-days" title="Old event rows are deleted after this many days. Events that still point at a recording are kept. 0 keeps them forever." />
               </div>
-              <button class="btn primary" id="set-save">Save</button>
-              <button class="btn" id="set-run-now">Run cleanup now</button>
+              <button class="btn primary" id="set-save" title="Store these retention rules. They apply from the next cleanup run.">Save</button>
+              <button class="btn" id="set-run-now" title="Apply the rules immediately instead of waiting for the next half-hourly run">Run cleanup now</button>
             </div>
 
             <div class="card">
               <h3>Change password</h3>
               <div class="field">
                 <label>Current password</label>
-                <input type="password" id="pw-current" autocomplete="current-password" />
+                <input type="password" id="pw-current" autocomplete="current-password" title="The password you signed in with" />
               </div>
               <div class="field">
                 <label>New password</label>
-                <input type="password" id="pw-new" autocomplete="new-password" />
+                <input type="password" id="pw-new" autocomplete="new-password" title="At least 8 characters" />
               </div>
               <div class="field">
                 <label>Repeat new password</label>
-                <input type="password" id="pw-repeat" autocomplete="new-password" />
+                <input type="password" id="pw-repeat" autocomplete="new-password" title="Type the new password again to catch typos" />
               </div>
-              <button class="btn primary" id="pw-save">Update password</button>
+              <button class="btn primary" id="pw-save" title="Change the password for this account. You stay signed in.">Update password</button>
             </div>
           </div>
         </section>
@@ -292,6 +293,18 @@
 
     <div id="modal-root"></div>
     <div class="toasts" id="toasts"></div>
+
+    <!-- Real gamma correction for the preview; CSS filters cannot do this.
+         Only referenced while gamma is away from 1, so it costs nothing. -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true" focusable="false">
+      <filter id="cr-gamma" color-interpolation-filters="sRGB">
+        <feComponentTransfer>
+          <feFuncR type="gamma" exponent="1" />
+          <feFuncG type="gamma" exponent="1" />
+          <feFuncB type="gamma" exponent="1" />
+        </feComponentTransfer>
+      </filter>
+    </svg>
 
     <script src="/js/api.js"></script>
     <script src="/js/player.js"></script>

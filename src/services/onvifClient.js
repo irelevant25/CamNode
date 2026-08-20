@@ -192,6 +192,92 @@ function pickToken(preferred, profiles, fallback) {
   return fallback;
 }
 
+/* ------------------------------------------------------------- imaging */
+
+const IMAGING_FIELDS = [
+  // Order matters: the ONVIF schema defines this sequence.
+  { key: 'brightness', element: 'Brightness', label: 'Brightness' },
+  { key: 'colorSaturation', element: 'ColorSaturation', label: 'Saturation' },
+  { key: 'contrast', element: 'Contrast', label: 'Contrast' },
+  { key: 'sharpness', element: 'Sharpness', label: 'Sharpness' },
+];
+
+function sourceToken(cam) {
+  if (cam.activeSource && cam.activeSource.sourceToken) return cam.activeSource.sourceToken;
+  const sources = cam.videoSources && (Array.isArray(cam.videoSources) ? cam.videoSources : [cam.videoSources]);
+  const first = sources && sources[0];
+  return (first && first.$ && first.$.token) || null;
+}
+
+/** Current image settings plus the range the camera accepts for each. */
+async function getImaging(cam) {
+  const token = sourceToken(cam);
+  const settings = await new Promise((resolve, reject) => {
+    cam.getImagingSettings({ token }, (err, result) => (err ? reject(new Error(err.message || String(err))) : resolve(result)));
+  });
+  let options = {};
+  try {
+    options = await new Promise((resolve, reject) => {
+      cam.getVideoSourceOptions({ token }, (err, result) => (err ? reject(new Error(err.message || String(err))) : resolve(result)));
+    });
+  } catch (err) {
+    options = {};
+  }
+
+  const fields = [];
+  for (const field of IMAGING_FIELDS) {
+    const value = settings && settings[field.key];
+    if (value === undefined || value === null) continue;
+    const range = (options && options[field.key]) || {};
+    fields.push({
+      key: field.key,
+      label: field.label,
+      value: Number(value),
+      min: range.min === undefined ? 0 : Number(range.min),
+      max: range.max === undefined ? 100 : Number(range.max),
+    });
+  }
+  return { token, fields };
+}
+
+/**
+ * Write image settings.
+ *
+ * Done as raw SOAP on purpose: the onvif client builds this request with
+ * `options.x ? ... : ''`, which silently drops any value of 0 – the bottom of
+ * every range on this camera.
+ */
+function setImaging(cam, values) {
+  return new Promise((resolve, reject) => {
+    const token = sourceToken(cam);
+    if (!token) return reject(new Error('Camera did not report a video source'));
+
+    const parts = [];
+    for (const field of IMAGING_FIELDS) {
+      const value = values[field.key];
+      if (value === undefined || value === null || value === '') continue;
+      const number = Number(value);
+      if (!Number.isFinite(number)) continue;
+      parts.push(`<${field.element} xmlns="http://www.onvif.org/ver10/schema">${number}</${field.element}>`);
+    }
+    if (!parts.length) return reject(new Error('Nothing to change'));
+
+    const body =
+      cam._envelopeHeader() +
+      '<SetImagingSettings xmlns="http://www.onvif.org/ver20/imaging/wsdl">' +
+      `<VideoSourceToken>${token}</VideoSourceToken>` +
+      `<ImagingSettings>${parts.join('')}</ImagingSettings>` +
+      '<ForcePersistence>true</ForcePersistence>' +
+      '</SetImagingSettings>' +
+      cam._envelopeFooter();
+
+    cam._request({ service: 'imaging', body }, (err) => {
+      if (err) return reject(new Error((err && err.message) || String(err)));
+      resolve();
+    });
+  });
+}
+
 /* ----------------------------------------------------- push subscriptions */
 
 /**
@@ -395,6 +481,8 @@ module.exports = {
   getSnapshotUrl,
   normaliseUri,
   withCredentials,
+  getImaging,
+  setImaging,
   subscribePush,
   renewSubscription,
   setSynchronizationPoint,
