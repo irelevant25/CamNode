@@ -122,4 +122,31 @@ assert.strictEqual(args[args.indexOf('-rtsp_transport') + 1], 'udp');
 assert.strictEqual(args[args.length - 1], 'rtsp://x/y');
 console.log('OK  ffmpeg argument building and credential masking');
 
+/* --------------------------------------------------- UI date formatting */
+process.env.TZ = 'Europe/Bratislava'; // make the expectations deterministic
+global.window = {};
+global.document = {};
+require(require('path').join(__dirname, '..', 'public', 'js', 'ui.js'));
+const uiHelpers = global.window.ui;
+
+// 2026-08-21T00:05:34Z is 02:05:34 local in this timezone.
+assert.strictEqual(uiHelpers.formatDateTime('2026-08-21T00:05:34.000Z'), '21.08.2026 02:05:34');
+// SQLite's "YYYY-MM-DD HH:MM:SS" is UTC and must be read as such.
+assert.strictEqual(uiHelpers.formatDateTime('2026-08-20 21:49:04'), '20.08.2026 23:49:04');
+// 24 hour clock: an afternoon time keeps its hour and carries no AM/PM.
+const afternoon = uiHelpers.formatDateTime('2026-01-15T13:07:09.000Z');
+assert.strictEqual(afternoon, '15.01.2026 14:07:09');
+assert.ok(!/[AP]M/i.test(afternoon), 'no meridiem in formatted dates');
+assert.match(uiHelpers.formatDateTime(new Date().toISOString()), /^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$/);
+assert.strictEqual(uiHelpers.formatDateTime(null), '—');
+console.log('OK  timestamps render as dd.MM.yyyy HH:mm:ss on a 24 hour clock');
+
+assert.strictEqual(uiHelpers.formatAgo(new Date(Date.now() - 5000).toISOString()), 'just now');
+assert.strictEqual(uiHelpers.formatAgo(new Date(Date.now() - 25 * 60000).toISOString()), '25 min ago');
+assert.strictEqual(uiHelpers.formatAgo(new Date(Date.now() - 3 * 3600000).toISOString()), '3 h ago');
+assert.strictEqual(uiHelpers.formatAgo(new Date(Date.now() - 2 * 86400000).toISOString()), '2 d ago');
+// formatAgo must never fall back to a date – the events panel shows both.
+assert.match(uiHelpers.formatAgo(new Date(Date.now() - 40 * 86400000).toISOString()), /ago$/);
+console.log('OK  relative ages stay relative ("3 h ago") at any age');
+
 console.log('\nAll self-tests passed.');

@@ -44,15 +44,21 @@
               <div class="player-panel">
                 <div class="player-stage" id="player-stage">
                   <video id="live-video" playsinline muted autoplay></video>
-                  <div class="badges" id="live-badges"></div>
                   <div class="player-overlay" id="live-overlay">Select a camera to start the live view</div>
                 </div>
                 <div class="player-controls">
+                  <div class="badges" id="live-badges"></div>
                   <button class="btn" id="btn-pause" disabled>Pause</button>
                   <button class="btn" id="btn-golive" disabled>Go live</button>
                   <button class="btn" id="btn-snapshot" disabled>Snapshot</button>
                   <button class="btn rec" id="btn-record" disabled>Record</button>
                   <span class="spacer"></span>
+                  <span class="zoom-group">
+                    <button class="btn icon" id="btn-zoom-out" title="Zoom out" disabled>&minus;</button>
+                    <span class="zoom-level" id="zoom-level">1.0&times;</span>
+                    <button class="btn icon" id="btn-zoom-in" title="Zoom in (scroll wheel on the picture)">+</button>
+                    <button class="btn sm" id="btn-zoom-reset" title="Reset zoom (double click)" disabled>Reset</button>
+                  </span>
                   <select id="quality" title="Stream quality">
                     <option value="sub">Sub stream</option>
                     <option value="main">Main stream</option>
@@ -289,6 +295,7 @@
 
     <script src="/js/api.js"></script>
     <script src="/js/player.js"></script>
+    <script src="/js/zoom.js"></script>
     <script src="/js/ui.js"></script>
     <script src="/js/app.js"></script>
   </body>

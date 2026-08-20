@@ -42,27 +42,35 @@
     return Number.isNaN(date.getTime()) ? null : date;
   }
 
+  const pad = (value) => String(value).padStart(2, '0');
+
+  /** Always dd.MM.yyyy HH:mm:ss on a 24 hour clock, whatever the locale is. */
   function formatDateTime(value) {
     const date = parseDate(value);
     if (!date) return '—';
-    return date.toLocaleString(undefined, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
+    return (
+      `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ` +
+      `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+    );
+  }
+
+  /** Relative age only – never falls back to a date. */
+  function formatAgo(value) {
+    const date = parseDate(value);
+    if (!date) return '—';
+    const diff = (Date.now() - date.getTime()) / 1000;
+    if (diff < 0) return 'just now';
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} h ago`;
+    if (diff < 2592000) return `${Math.floor(diff / 86400)} d ago`;
+    return `${Math.floor(diff / 2592000)} mo ago`;
   }
 
   function formatRelative(value) {
     const date = parseDate(value);
     if (!date) return '—';
-    const diff = (Date.now() - date.getTime()) / 1000;
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} h ago`;
-    return formatDateTime(value);
+    return (Date.now() - date.getTime()) / 1000 < 86400 ? formatAgo(value) : formatDateTime(value);
   }
 
   /** Convert a datetime-local input value to an ISO string for the API. */
@@ -178,6 +186,7 @@
     formatDuration,
     formatDateTime,
     formatRelative,
+    formatAgo,
     localInputToIso,
     parseDate,
     toast,

@@ -18,6 +18,7 @@
   };
 
   let player = null;
+  let zoom = null;
 
   /* ------------------------------------------------------------- boot */
 
@@ -150,6 +151,22 @@
       .join('');
   }
 
+  /** How events are currently reaching us for this camera. */
+  function eventChannelLabel(camera) {
+    const labels = {
+      pull: 'Pull point',
+      push: 'Push notifications',
+      off: 'Disabled',
+    };
+    const active = camera.event_channel;
+    if (!active) return '<span class="muted">not connected</span>';
+    const label = labels[active] || active;
+    if (camera.event_channel_error) {
+      return `<span class="pill off" title="${esc(camera.event_channel_error)}">${esc(label)} · problem</span>`;
+    }
+    return `<span class="pill ${active === 'off' ? 'off' : 'on'}">${esc(label)}</span>`;
+  }
+
   function renderCameraCards() {
     const grid = $('camera-grid');
     if (!state.cameras.length) {
@@ -172,12 +189,14 @@
           <div class="row"><span>Status</span><span>${esc(camera.status_message || camera.status)}</span></div>
           <div class="row"><span>Recording profile</span><span>${esc(resolution)}</span></div>
           <div class="row"><span>Record on event</span><span>${camera.record_on_event ? `Yes · ${camera.event_record_seconds}s` : 'No'}</span></div>
+          <div class="row"><span>Events</span><span>${eventChannelLabel(camera)}</span></div>
           <div class="row"><span>Live viewers</span><span>${camera.live_viewers || 0}</span></div>
           <div class="row"><span>Last seen</span><span>${esc(ui.formatRelative(camera.last_seen_at))}</span></div>
           <div class="card-actions">
             <button class="btn sm" data-action="view" data-id="${camera.id}">Live</button>
             <button class="btn sm" data-action="edit" data-id="${camera.id}">Edit</button>
             <button class="btn sm" data-action="refresh" data-id="${camera.id}">Re-discover</button>
+            <button class="btn sm" data-action="test-events" data-id="${camera.id}">Test events</button>
             <button class="btn sm danger" data-action="delete" data-id="${camera.id}">Delete</button>
           </div>
         </div>`;
@@ -217,6 +236,36 @@
         }
         return;
       }
+      if (button.dataset.action === 'test-events') {
+        const original = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Testing…';
+        try {
+          const result = await api.post(`/api/cameras/${id}/events/test`, {});
+          if (result.ok) {
+            ui.toast(`Events work: ${result.notifications_received} notification(s) via ${result.channel}`, 'success');
+          } else {
+            ui.openModal({
+              title: 'No notifications received',
+              body: `<p>The camera accepted the request but nothing arrived within 6 seconds.</p>
+                     <p class="hint">Channel: <strong>${esc(result.channel || 'unknown')}</strong><br />
+                     ${result.consumer_url ? `Callback URL the camera was given:<br /><span class="mono">${esc(result.consumer_url)}</span>` : ''}</p>
+                     <p>In push mode the camera has to open a connection back to this server. Check that
+                     the address above is reachable from the camera's network, that detection is enabled
+                     in the Tapo app, and set <span class="mono">PUBLIC_URL</span> if this server sits
+                     behind Docker or NAT.</p>`,
+              buttons: [{ label: 'Close' }],
+            });
+          }
+          await loadCameras();
+        } catch (err) {
+          ui.toast(err.message, 'error');
+        } finally {
+          button.disabled = false;
+          button.textContent = original;
+        }
+        return;
+      }
       if (button.dataset.action === 'delete') {
         const ok = await ui.confirmModal(
           'Delete camera',
@@ -245,6 +294,7 @@
       rtsp_transport: 'tcp',
       enabled: true,
       record_on_event: true,
+      event_mode: 'auto',
       event_record_seconds: 30,
       max_record_seconds: 900,
       record_audio: true,
@@ -296,6 +346,16 @@
         <div class="field"><label>Max file length (s)</label><input type="number" id="cam-max-seconds" min="30" max="21600" value="${values.max_record_seconds}" /></div>
       </div>
       <div class="field"><label class="checkbox"><input type="checkbox" id="cam-on-event" ${values.record_on_event ? 'checked' : ''} /> Record automatically on ONVIF detection events</label></div>
+      <div class="field">
+        <label>Event delivery</label>
+        <select id="cam-event-mode">
+          <option value="auto" ${values.event_mode === 'auto' ? 'selected' : ''}>Automatic - pull point, fall back to push</option>
+          <option value="pull" ${values.event_mode === 'pull' ? 'selected' : ''}>Pull point only</option>
+          <option value="push" ${values.event_mode === 'push' ? 'selected' : ''}>Push notifications only</option>
+          <option value="off" ${values.event_mode === 'off' ? 'selected' : ''}>Do not subscribe to events</option>
+        </select>
+        <p class="hint">Tapo cameras accept a pull-point subscription but reset every poll, so they need push. In push mode the camera posts events back to this server, so set <code>PUBLIC_URL</code> when running in Docker.</p>
+      </div>
       <div class="field"><label class="checkbox"><input type="checkbox" id="cam-audio" ${values.record_audio ? 'checked' : ''} /> Record audio (when the camera provides it)</label></div>
       <div class="field"><label class="checkbox"><input type="checkbox" id="cam-enabled" ${values.enabled ? 'checked' : ''} /> Enabled (connect and listen for events)</label></div>
     `;
@@ -337,6 +397,7 @@
         event_record_seconds: Number(modal.querySelector('#cam-event-seconds').value) || 30,
         max_record_seconds: Number(modal.querySelector('#cam-max-seconds').value) || 900,
         record_on_event: modal.querySelector('#cam-on-event').checked,
+        event_mode: modal.querySelector('#cam-event-mode').value,
         record_audio: modal.querySelector('#cam-audio').checked,
         enabled: modal.querySelector('#cam-enabled').checked,
       };
@@ -408,12 +469,19 @@
       else if (stage.requestFullscreen) stage.requestFullscreen();
     });
 
-    $('live-video').addEventListener('click', () => {
-      if (state.activeCameraId) {
-        player.togglePause();
-        updateLiveControls();
-      }
-    });
+    // Scroll wheel / pinch to zoom, drag to move, double click to reset.
+    zoom = new ZoomPan($('player-stage'), $('live-video'), onZoomChange);
+    $('btn-zoom-in').addEventListener('click', () => zoom.zoomBy(1.4));
+    $('btn-zoom-out').addEventListener('click', () => zoom.zoomBy(1 / 1.4));
+    $('btn-zoom-reset').addEventListener('click', () => zoom.reset());
+    onZoomChange(zoom.scale);
+  }
+
+  function onZoomChange(scale) {
+    $('zoom-level').textContent = `${scale.toFixed(1)}×`;
+    $('btn-zoom-out').disabled = scale <= 1;
+    $('btn-zoom-reset').disabled = scale <= 1;
+    $('btn-zoom-in').disabled = scale >= 8;
   }
 
   function selectCamera(id) {
@@ -421,6 +489,7 @@
     if (!camera) return;
     state.activeCameraId = id;
     renderRail();
+    if (zoom) zoom.reset();
     player.open(id, $('quality').value);
     updateLiveControls();
     loadLiveSidePanels();
@@ -546,7 +615,9 @@
               (event) => `
               <div class="row" style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
                 <span>${esc(event.label || event.type)} ${event.state === 0 ? '<span class="muted">(ended)</span>' : ''}</span>
-                <span class="muted">${esc(ui.formatRelative(event.received_at))}</span>
+                <span class="muted mono" style="white-space:nowrap">${esc(ui.formatDateTime(event.received_at))}
+                  <span style="opacity:.65">· ${esc(ui.formatAgo(event.received_at))}</span>
+                </span>
               </div>`
             )
             .join('')

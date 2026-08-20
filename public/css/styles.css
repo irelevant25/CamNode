@@ -418,6 +418,8 @@ label {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden; /* keeps a zoomed picture inside the frame */
+  touch-action: none; /* we handle pan/pinch ourselves */
 }
 
 .player-stage video {
@@ -439,30 +441,32 @@ label {
   padding: 20px;
 }
 
+/* Status badges live in the control bar, never on top of the picture. */
 .badges {
-  position: absolute;
-  top: 12px;
-  left: 12px;
   display: flex;
   gap: 8px;
-  pointer-events: none;
+  align-items: center;
+}
+
+.badges:empty {
+  display: none;
 }
 
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(0, 0, 0, 0.62);
-  backdrop-filter: blur(4px);
+  background: rgba(255, 255, 255, 0.07);
   border-radius: 20px;
-  padding: 4px 11px;
+  padding: 5px 11px;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 .badge.live {
-  color: #fff;
+  color: var(--text);
 }
 .badge.live::before {
   content: "";
@@ -502,6 +506,20 @@ label {
 
 .player-controls select {
   width: auto;
+}
+
+.zoom-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zoom-level {
+  min-width: 42px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
 
 .live-extras {
