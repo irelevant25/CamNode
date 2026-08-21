@@ -11,9 +11,14 @@ RUN npm install --omit=dev --no-audit --no-fund
 
 # ------------------------------------------------------------------- runtime
 FROM node:22-bookworm-slim AS runtime
+# Debian's ffmpeg package ships ffmpeg, ffprobe and ffplay together; the app
+# uses the first two. Verifying here fails the build loudly rather than
+# producing an image that only breaks when the first recording starts.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ffmpeg tini ca-certificates tzdata \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && ffmpeg -version > /dev/null \
+ && ffprobe -version > /dev/null
 
 ENV NODE_ENV=production \
     DATA_DIR=/data \

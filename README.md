@@ -302,6 +302,16 @@ next to the app, then in `./bin`, then on `PATH` – dropping `ffmpeg.exe` (and
 enough on Windows. The resolved path and version are logged at startup, and a
 missing binary is reported in the UI instead of failing silently later.
 
+Only those two are used: **ffmpeg** for streaming, recording, snapshots and
+thumbnails, and **ffprobe** for exact durations and the audio analysis behind the
+sound bar. Without ffprobe everything still works, durations just fall back to
+wall clock. **ffplay is never used** – it is an interactive viewer that happens
+to come in the same archive, and can be deleted.
+
+Those `.exe` files are for running on Windows only. They are gitignored and
+excluded from the Docker build context, so they are neither pushed nor uploaded
+to a build; the image installs ffmpeg from Debian instead.
+
 ```bash
 npm install
 cp .env.example .env          # set DATA_DIR=./data for local runs
