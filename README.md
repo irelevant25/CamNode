@@ -23,59 +23,73 @@ work, plain HTML/CSS/JS frontend with no build step.
 
 ---
 
-## Building the image
+## Getting the image onto a NAS or server
 
-Easiest is to let Portainer build it from the repository (see *Deploy with
-Portainer* below). These are the manual routes, for when you want the image on
-the host yourself. The build always happens **on the machine running Docker**;
-there is no registry involved.
+A **git URL is not a docker repository URL**. Synology's Container Manager (and
+any "pull image" screen) expects a registry reference such as
+`ghcr.io/owner/name:tag`; it cannot build from source. Only Portainer's
+*Stacks → Add stack → Repository* screen accepts a git URL, and even then it is
+Portainer doing the build.
 
-### A. Copy the source to the Docker host and build there (simplest)
+### A. Let GitHub build it (recommended for a NAS)
 
-Copy the project folder to the host, **without `node_modules` and without the
-`*.exe` ffmpeg binaries**: the node modules are compiled for Windows and would
-break inside the image, and the binaries are ~600 MB of dead weight.
+`.github/workflows/publish-image.yml` builds on every push to the default branch
+and publishes to the GitHub Container Registry. After the first successful run:
 
-```bash
-# from the project folder on Windows (adjust user/host/path)
-scp -r Dockerfile docker-compose*.yml package.json package-lock.json src public \
-    user@192.168.4.104:/opt/camera-recordings/
+1. GitHub → your profile → **Packages** → the package → **Package settings**
+2. **Change visibility → Public** (otherwise the NAS needs to log in to
+   `ghcr.io` with a personal access token that has `read:packages`)
 
-# then on the Docker host
-cd /opt/camera-recordings
-docker build -t camera-recordings:latest .
+The NAS can then pull it like any public image:
+
+```
+ghcr.io/irelevant25/camnode:latest
 ```
 
-Either run it straight away with `docker compose up -d --build`, or leave the
-image built and deploy it through Portainer (see below).
+In Synology **Container Manager → Registry**, search or use *Add → From URL* with
+that address, or skip the image screen entirely and create a **Project** with
+`docker-compose.portainer.yml`, which already points at it.
 
-### B. Build on the host from your PC, over SSH
+### B. Build it on the host over SSH
 
-The Docker CLI is on your PC even though the daemon is not; point it at the
-server and it ships the build context for you. Needs SSH key access to the host.
+No CI involved. Enable SSH on the NAS, then:
+
+```bash
+ssh user@192.168.4.104
+git clone https://github.com/irelevant25/CamNode.git
+cd CamNode
+sudo docker build -t camera-recordings:latest .
+```
+
+Then use `docker-compose.portainer.yml` with `IMAGE=camera-recordings:latest`
+and `pull_policy: never` uncommented.
+
+### C. Build elsewhere and move the image as a file
+
+```bash
+docker save camera-recordings:latest | gzip > camnode.tar.gz
+# copy it across, then on the host:
+gunzip -c camnode.tar.gz | docker load
+```
+
+The first build takes a few minutes: it installs ffmpeg and, where there is no
+prebuilt binary for the architecture, compiles better-sqlite3.
+
+### D. Build on the host from your PC, over SSH
+
+The Docker CLI works even when the daemon is elsewhere: point it at the host and
+it ships the build context for you. Needs SSH key access, which Synology allows
+for administrators once SSH is enabled.
 
 ```powershell
 $env:DOCKER_HOST = "ssh://user@192.168.4.104"
 docker build -t camera-recordings:latest .
-docker images camera-recordings          # confirm it landed on the server
+docker images camera-recordings          # confirm it landed on the host
 Remove-Item Env:\DOCKER_HOST
 ```
 
-`.dockerignore` already keeps `node_modules`, `data` and the `*.exe` files out
-of what gets sent.
-
-### C. Build elsewhere and move the image as a file
-
-Only needed when the build machine has no network path to the host.
-
-```bash
-docker save camera-recordings:latest | gzip > camera-recordings.tar.gz
-# copy the file across, then on the Docker host:
-gunzip -c camera-recordings.tar.gz | docker load
-```
-
-The first build takes a few minutes: it installs ffmpeg and, on architectures
-without a prebuilt binary (a NAS or Pi on ARM), compiles better-sqlite3.
+`.dockerignore` keeps `node_modules`, `data` and the `*.exe` files out of what
+gets sent, so the context is about 0.4 MB rather than 600 MB.
 
 ## Deploy with Portainer
 
@@ -95,12 +109,12 @@ copied to the host by hand and updating is a single click.
 To update: push, then **Pull and redeploy** in Portainer. `/data` is a named
 volume, so the database and recordings survive a rebuild.
 
-### Web editor with a prebuilt image
+### Ready-made image (Synology Container Manager, or Portainer's web editor)
 
-If you would rather build the image yourself (see above), paste
-**`docker-compose.portainer.yml`** into the web editor instead. It has no
-`build:` section and sets `pull_policy: never`, so Docker will not go looking
-for the image on Docker Hub.
+Use **`docker-compose.portainer.yml`**. It has no `build:` section and pulls the
+published image by default, which is what Synology's *Container Manager →
+Project* needs. Point `IMAGE` at a locally built image instead if you built one
+yourself, and uncomment `pull_policy: never` so Docker does not try to fetch it.
 
 ### Environment variables
 

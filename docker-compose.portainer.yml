@@ -1,28 +1,29 @@
 # ---------------------------------------------------------------------------
-# Portainer stack: Stacks → Add stack → Web editor → paste this file.
+# Runs a ready-made image, with no build step. Use this on a Synology NAS
+# (Container Manager → Project) or in Portainer's web editor.
 #
-# It has no `build:` section, because Portainer's web editor has no source to
-# build from. Build the image on the Docker host first:
+# By default it pulls the image published by .github/workflows/publish-image.yml.
+# Make the package public once, or log the host in to ghcr.io, and the NAS can
+# pull it like any other image.
 #
-#     docker build -t camera-recordings:latest .
+# To run an image you built on the host yourself instead, set
+#   IMAGE=camera-recordings:latest
+# and uncomment `pull_policy: never` so Docker does not try to fetch it.
 #
-# `pull_policy: never` stops Docker looking for that name on Docker Hub, where
-# it does not exist.
-#
-# Fill these in under Portainer's "Environment variables":
-#   APP_SECRET      long random string; signs sessions and encrypts camera
-#                   passwords. Changing it later means re-entering them.
+# Required environment variables:
+#   APP_SECRET      long random string; signs sessions and derives the key that
+#                   encrypts camera passwords. Changing it later means
+#                   re-entering them.
 #   ADMIN_PASSWORD  first-run password for the admin account.
-#   PUBLIC_URL      http://<docker-host-ip>:8080 - REQUIRED here. Cameras post
-#                   their ONVIF events to this address, and a bridged container
-#                   IP is not reachable from a camera, so events would never
-#                   arrive without it.
+#   PUBLIC_URL      http://<nas-ip>:8080 - REQUIRED. Cameras POST their ONVIF
+#                   events to this address, and a bridged container IP is not
+#                   reachable from a camera, so events would never arrive.
 # ---------------------------------------------------------------------------
 
 services:
   camera-recordings:
-    image: camera-recordings:latest
-    pull_policy: never
+    image: "${IMAGE:-ghcr.io/irelevant25/camnode:latest}"
+    # pull_policy: never   # uncomment when IMAGE is a locally built image
     container_name: camera-recordings
     restart: unless-stopped
     ports:
