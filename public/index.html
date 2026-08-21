@@ -118,38 +118,38 @@
 
           <div class="card">
             <div class="card-head">
-              <h3>Day at a glance</h3>
+              <h3 id="tl-day-title">Day at a glance</h3>
               <span class="muted" style="font-size: 12px">Click a block to play it, or an event mark to jump there</span>
             </div>
 
-            <div class="day-track" id="tl-track" title="Blue blocks are recordings; marks underneath are detection events. Click either one.">
+            <div class="day-track" id="tl-track" title="Blue blocks are recordings; marks underneath are detection events. Click anywhere to open the nearest recording.">
               <div class="day-grid" id="tl-grid"></div>
               <div class="day-blocks" id="tl-blocks"></div>
               <div class="day-events" id="tl-events"></div>
               <div class="day-now" id="tl-now"></div>
+              <div class="day-hover" id="tl-hover"><span></span></div>
             </div>
             <div class="day-hours" id="tl-hours"></div>
           </div>
 
-          <div class="grid-2" style="margin-top: 18px">
-            <div class="card">
-              <div class="card-head">
-                <h3>Events per hour</h3>
-                <span class="muted" style="font-size: 12px" id="tl-hour-note"></span>
-              </div>
-              <div class="bar-chart" id="tl-hour-chart"></div>
+          <div class="card" style="margin-top: 18px">
+            <div class="card-head">
+              <h3 id="tl-hour-title">Events per hour</h3>
+              <span class="muted" style="font-size: 12px" id="tl-hour-note"></span>
             </div>
-            <div class="card">
-              <div class="card-head">
-                <h3>Events per day</h3>
-                <select id="tl-activity-days" style="width: auto" title="How far back the daily chart looks">
-                  <option value="14">Last 14 days</option>
-                  <option value="30">Last 30 days</option>
-                  <option value="90">Last 90 days</option>
-                </select>
-              </div>
-              <div class="bar-chart" id="tl-day-chart" title="Click a day to open it above"></div>
+            <div class="bar-chart" id="tl-hour-chart"></div>
+          </div>
+
+          <div class="card" style="margin-top: 18px">
+            <div class="card-head">
+              <h3>Events per day</h3>
+              <select id="tl-activity-days" style="width: auto" title="How far back the daily chart looks">
+                <option value="14">Last 14 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+              </select>
             </div>
+            <div class="bar-chart" id="tl-day-chart" title="Click a day to open it above"></div>
           </div>
         </section>
 

@@ -15,6 +15,7 @@
     lastVolume: 60,
     userInteracted: false,
     recordingTimer: null,
+    timeline: null,
     rec: { offset: 0, limit: 25, total: 0, selected: new Set() },
     ev: { offset: 0, limit: 50, total: 0, selected: new Set() },
     snap: { offset: 0, limit: 24, total: 0 },
@@ -955,11 +956,32 @@
     });
     $('tl-activity-days').addEventListener('change', loadActivity);
 
-    $('tl-track').addEventListener('click', (event) => {
+    const track = $('tl-track');
+
+    track.addEventListener('click', (event) => {
       const block = event.target.closest('[data-recording]');
       if (block) return playRecording(Number(block.dataset.recording));
       const mark = event.target.closest('[data-event-recording]');
       if (mark) return playRecording(Number(mark.dataset.eventRecording));
+      // A short recording is only a couple of pixels wide, so treat a click
+      // near one as a click on it.
+      const nearest = nearestRecording(trackFraction(event, track));
+      if (nearest) playRecording(nearest.id);
+    });
+
+    track.addEventListener('pointermove', (event) => {
+      const day = state.timeline;
+      if (!day) return;
+      const fraction = trackFraction(event, track);
+      const hover = $('tl-hover');
+      hover.style.left = `${fraction * 100}%`;
+      const at = new Date(day.start + fraction * day.length);
+      const pad = (value) => String(value).padStart(2, '0');
+      const nearest = nearestRecording(fraction);
+      hover.querySelector('span').textContent =
+        `${pad(at.getHours())}:${pad(at.getMinutes())}` + (nearest ? ` · ${nearest.hint}` : '');
+      hover.classList.toggle('flip', fraction > 0.88);
+      hover.classList.toggle('flip-start', fraction < 0.12);
     });
 
     $('tl-day-chart').addEventListener('click', (event) => {
@@ -968,6 +990,34 @@
       $('tl-date').value = bar.dataset.day;
       loadTimeline();
     });
+  }
+
+  function trackFraction(event, element) {
+    const rect = element.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+  }
+
+  /**
+   * Recording under (or closest to) a point on the day track. Blocks for short
+   * recordings are too thin to hit reliably, so anything within a few minutes
+   * counts as a hit.
+   */
+  function nearestRecording(fraction) {
+    const day = state.timeline;
+    if (!day || !day.blocks.length) return null;
+    const at = day.start + fraction * day.length;
+    const tolerance = day.length * 0.02; // ~29 minutes on a 24 hour band
+
+    let best = null;
+    let bestDistance = Infinity;
+    for (const block of day.blocks) {
+      const distance = at < block.from ? block.from - at : at > block.to ? at - block.to : 0;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = block;
+      }
+    }
+    return best && bestDistance <= tolerance ? best : null;
   }
 
   function todayKey() {
@@ -1010,6 +1060,25 @@
     const dayStart = new Date(data.from).getTime();
     const dayLength = new Date(data.to).getTime() - dayStart;
     const position = (iso) => ((new Date(iso).getTime() - dayStart) / dayLength) * 100;
+
+    // Kept so hovering and clicking the track can work in real time.
+    state.timeline = {
+      start: dayStart,
+      length: dayLength,
+      blocks: data.recordings.map((rec) => ({
+        id: rec.id,
+        from: new Date(rec.started_at).getTime(),
+        to: new Date(rec.ended_at || new Date().toISOString()).getTime(),
+        hint: `${rec.trigger_type} ${rec.status === 'recording' ? 'recording now' : ui.formatDuration(rec.duration_seconds)}`,
+      })),
+    };
+
+    const dayDate = new Date(dayStart);
+    const dayText = ui.formatDateTime(dayDate.toISOString()).split(' ')[0];
+    const weekday = dayDate.toLocaleDateString(undefined, { weekday: 'long' });
+    const isToday = ui.formatDateTime(new Date().toISOString()).split(' ')[0] === dayText;
+    $('tl-day-title').textContent = `Day at a glance · ${weekday} ${dayText}${isToday ? ' (today)' : ''}`;
+    $('tl-hour-title').textContent = `Events per hour · ${dayText}`;
 
     $('tl-grid').innerHTML = new Array(24).fill('<span></span>').join('');
     $('tl-hours').innerHTML = new Array(12)
