@@ -54,6 +54,13 @@ function thumbnailTarget(relPath) {
   return { relPath: rel, absPath };
 }
 
+function waveformTarget(relPath) {
+  const rel = relPath.replace(/\.mp4$/i, '.json');
+  const absPath = path.join(config.waveformsDir, rel);
+  fs.mkdirSync(path.dirname(absPath), { recursive: true });
+  return { relPath: rel, absPath };
+}
+
 function snapshotTarget(camera, date) {
   const when = date || new Date();
   const filename = `${timeStamp(when)}_${slug(camera.name)}.jpg`;
@@ -78,6 +85,10 @@ function recordingPath(relPath) {
 
 function thumbnailPath(relPath) {
   return resolveWithin(config.thumbnailsDir, relPath);
+}
+
+function waveformPath(relPath) {
+  return resolveWithin(config.waveformsDir, relPath);
 }
 
 function snapshotPath(relPath) {
@@ -106,7 +117,9 @@ function removeFile(absPath) {
 
 /** Remove now-empty date/camera folders, but never the configured roots. */
 function pruneEmptyDirs(dir) {
-  const roots = [config.recordingsDir, config.snapshotsDir, config.thumbnailsDir].map((d) => path.resolve(d));
+  const roots = [config.recordingsDir, config.snapshotsDir, config.thumbnailsDir, config.waveformsDir].map((d) =>
+    path.resolve(d)
+  );
   let current = path.resolve(dir);
   for (let i = 0; i < 3; i += 1) {
     if (roots.indexOf(current) !== -1) return;
@@ -122,7 +135,7 @@ function pruneEmptyDirs(dir) {
 
 /** Recursively delete everything belonging to a camera (after deletion). */
 function removeCameraFiles(cameraId) {
-  for (const base of [config.recordingsDir, config.snapshotsDir, config.thumbnailsDir]) {
+  for (const base of [config.recordingsDir, config.snapshotsDir, config.thumbnailsDir, config.waveformsDir]) {
     const dir = path.join(base, String(cameraId));
     try {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -157,9 +170,11 @@ module.exports = {
   timeStamp,
   recordingTarget,
   thumbnailTarget,
+  waveformTarget,
   snapshotTarget,
   recordingPath,
   thumbnailPath,
+  waveformPath,
   snapshotPath,
   fileSize,
   removeFile,

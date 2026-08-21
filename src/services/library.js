@@ -19,6 +19,7 @@ async function deleteRecording(id, options) {
   }
   storage.removeFile(storage.recordingPath(recording.rel_path));
   if (recording.thumbnail_path) storage.removeFile(storage.thumbnailPath(recording.thumbnail_path));
+  storage.removeFile(storage.waveformTarget(recording.rel_path).absPath);
   repo.recordings.remove(id);
   publish('recording:deleted', { camera_id: recording.camera_id, recording_id: id });
   return { ok: true, recording };

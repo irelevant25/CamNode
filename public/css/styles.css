@@ -571,6 +571,150 @@ label {
   padding-top: 0;
 }
 
+/* ---------------------------------------------------------- playback view */
+
+.playback video {
+  width: 100%;
+  background: #000;
+  max-height: 60vh;
+  border-radius: 6px;
+  display: block;
+}
+
+.playback-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 12px 0 8px;
+}
+
+.playback-readout .spacer {
+  flex: 1;
+}
+
+.playback-clock {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.playback-date {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.playback-position {
+  color: var(--text-dim);
+}
+
+.track {
+  position: relative;
+  height: 26px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  cursor: pointer;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.track-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(59, 130, 246, 0.28);
+  width: 0;
+}
+
+.track-head {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.8);
+  pointer-events: none;
+}
+
+.track-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  margin: 4px 0 10px;
+}
+
+.waveform-track {
+  height: 46px;
+}
+
+.waveform-track canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.track-note {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.playback-meta {
+  margin-top: 10px;
+  font-size: 12.5px;
+}
+
+/* ------------------------------------------------------- live stream info */
+
+.stream-info {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--text);
+  pointer-events: none;
+  display: none;
+  max-width: calc(100% - 24px);
+}
+
+.stream-info.on {
+  display: block;
+}
+
+.stream-info b {
+  color: var(--text-faint);
+  font-weight: 500;
+  display: inline-block;
+  min-width: 74px;
+}
+
+.volume-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.volume-group input[type="range"] {
+  width: 84px;
+  accent-color: var(--accent);
+  background: transparent;
+}
+
 .live-extras {
   display: grid;
   grid-template-columns: 1fr 1fr;

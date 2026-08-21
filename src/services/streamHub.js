@@ -74,9 +74,21 @@ class LiveStream {
     this.setState('connecting');
 
     const args = rtspInputArgs(this.camera, url).concat([
-      '-an',
+      '-map',
+      '0:v:0',
       '-c:v',
       'copy',
+      // Audio is optional: "?" keeps ffmpeg happy when the camera sends none.
+      // It is re-encoded because cameras usually speak G.711, which MP4 and
+      // MediaSource cannot carry.
+      '-map',
+      '0:a:0?',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '64k',
+      '-ac',
+      '1',
       '-movflags',
       '+frag_keyframe+empty_moov+default_base_moof',
       '-f',

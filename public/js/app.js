@@ -11,6 +11,9 @@
     activeCameraId: null,
     activeRecordings: {},
     view: 'live',
+    showInfo: false,
+    lastVolume: 60,
+    userInteracted: false,
     recordingTimer: null,
     rec: { offset: 0, limit: 25, total: 0, selected: new Set() },
     ev: { offset: 0, limit: 50, total: 0, selected: new Set() },
@@ -477,6 +480,101 @@
     onZoomChange(zoom.scale);
 
     $('btn-image').addEventListener('click', openImageModal);
+
+    $('btn-info').addEventListener('click', () => {
+      state.showInfo = !state.showInfo;
+      $('stream-info').classList.toggle('on', state.showInfo);
+      $('btn-info').classList.toggle('primary', state.showInfo);
+      try {
+        localStorage.setItem('showInfo', state.showInfo ? '1' : '0');
+      } catch (err) {
+        /* ignore */
+      }
+      renderStreamInfo();
+    });
+
+    try {
+      state.showInfo = localStorage.getItem('showInfo') === '1';
+      $('stream-info').classList.toggle('on', state.showInfo);
+      $('btn-info').classList.toggle('primary', state.showInfo);
+      const storedVolume = Number(localStorage.getItem('volume'));
+      if (Number.isFinite(storedVolume) && storedVolume > 0) $('volume').value = storedVolume;
+    } catch (err) {
+      /* ignore */
+    }
+
+    $('volume').addEventListener('input', () => applyVolume(Number($('volume').value)));
+    $('btn-mute').addEventListener('click', () => {
+      const current = Number($('volume').value);
+      if (current > 0) {
+        state.lastVolume = current;
+        $('volume').value = 0;
+        applyVolume(0);
+      } else {
+        const restored = state.lastVolume || 60;
+        $('volume').value = restored;
+        applyVolume(restored);
+      }
+    });
+
+    document.addEventListener('pointerdown', noteInteraction, { once: true });
+    document.addEventListener('keydown', noteInteraction, { once: true });
+
+    setInterval(renderStreamInfo, 1000);
+  }
+
+  /**
+   * Browsers refuse to autoplay a stream with sound until the user has
+   * interacted with the page, and a blocked play() leaves a black picture. So a
+   * remembered volume is shown on the slider but only applied once we have a
+   * genuine interaction.
+   */
+  function applyVolume(percent) {
+    const effective = state.userInteracted ? percent : 0;
+    if (player) player.setVolume(effective / 100);
+    $('btn-mute').textContent = effective > 0 ? '🔊' : '🔇';
+    $('btn-mute').title = state.userInteracted
+      ? 'Mute or unmute the live sound'
+      : 'Click anywhere first – browsers only allow sound after you interact with the page';
+    try {
+      localStorage.setItem('volume', String(percent));
+    } catch (err) {
+      /* ignore */
+    }
+  }
+
+  function noteInteraction() {
+    if (state.userInteracted) return;
+    state.userInteracted = true;
+    applyVolume(Number($('volume').value));
+  }
+
+  /** Live measurements of the stream currently on screen. */
+  function renderStreamInfo() {
+    if (!state.showInfo) return;
+    const box = $('stream-info');
+    if (!state.activeCameraId || !player) {
+      box.textContent = '';
+      return;
+    }
+    const stats = player.getStats();
+    const rows = [
+      ['Stream', stats.quality === 'main' ? 'main (full resolution)' : 'sub (low resolution)'],
+      ['Codec', stats.codec || '—'],
+      ['Resolution', stats.width ? `${stats.width}×${stats.height}` : '—'],
+      ['Frame rate', stats.fps ? `${stats.fps.toFixed(1)} fps` : '—'],
+      ['Bitrate', stats.bitrate ? formatBits(stats.bitrate) : '—'],
+      ['Audio', stats.hasAudio ? (stats.volume > 0 ? `on, ${Math.round(stats.volume * 100)}%` : 'muted') : 'none'],
+      ['Buffer', `${stats.buffered.toFixed(1)} s`],
+      ['Received', ui.formatBytes(stats.totalBytes)],
+    ];
+    if (stats.dropped !== null) rows.push(['Dropped', `${stats.dropped} frames`]);
+    box.innerHTML = rows.map(([key, value]) => `<div><b>${esc(key)}</b>${esc(value)}</div>`).join('');
+  }
+
+  function formatBits(bitsPerSecond) {
+    if (bitsPerSecond >= 1000000) return `${(bitsPerSecond / 1000000).toFixed(2)} Mbit/s`;
+    return `${Math.round(bitsPerSecond / 1000)} kbit/s`;
   }
 
   /* ------------------------------------------------ picture adjustments */
@@ -665,6 +763,7 @@
     if (zoom) zoom.reset();
     applyPreviewSettings(previewSettings(id));
     player.open(id, $('quality').value);
+    applyVolume(Number($('volume').value));
     updateLiveControls();
     loadLiveSidePanels();
   }
@@ -700,6 +799,9 @@
     $('btn-snapshot').disabled = !hasCamera;
     $('btn-record').disabled = !hasCamera;
     $('btn-image').disabled = !hasCamera;
+    $('btn-info').disabled = !hasCamera;
+    $('btn-mute').disabled = !hasCamera;
+    $('volume').disabled = !hasCamera;
     $('btn-pause').textContent = player && player.paused ? 'Play' : 'Pause';
     $('btn-record').textContent = recording ? 'Stop recording' : 'Record';
     $('btn-record').classList.toggle('rec', !recording);
@@ -965,18 +1067,7 @@
   function playRecording(id) {
     api
       .get(`/api/recordings/${id}`)
-      .then(({ recording }) => {
-        ui.openModal({
-          title: `${recording.camera_name || 'Recording'} · ${ui.formatDateTime(recording.started_at)}`,
-          wide: true,
-          body: `
-            <video controls autoplay playsinline src="/api/recordings/${id}/stream"></video>
-            <div class="pager">
-              <span class="muted">${esc(ui.formatDuration(recording.duration_seconds))} · ${esc(ui.formatBytes(recording.size_bytes))} · ${esc(recording.trigger_type)}</span>
-              <a class="btn sm" href="/api/recordings/${id}/download">Download</a>
-            </div>`,
-        });
-      })
+      .then(({ recording }) => openRecordingPlayer(recording))
       .catch((err) => ui.toast(err.message, 'error'));
   }
 

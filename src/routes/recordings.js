@@ -4,6 +4,7 @@ const express = require('express');
 const repo = require('../db/repo');
 const storage = require('../services/storage');
 const library = require('../services/library');
+const waveform = require('../services/waveform');
 const { sendFile } = require('./media');
 
 const router = express.Router();
@@ -56,6 +57,19 @@ router.get('/:id/download', (req, res) => {
     filename: recording.filename,
     download: true,
   });
+});
+
+/** Sound intensity over the recording, so the UI can show where audio happens. */
+router.get('/:id/waveform', async (req, res) => {
+  const recording = repo.recordings.get(Number(req.params.id));
+  if (!recording) return res.status(404).json({ error: 'Recording not found' });
+  try {
+    const result = await waveform.get(recording);
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.json(result || { peaks: null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get('/:id/thumbnail', (req, res) => {

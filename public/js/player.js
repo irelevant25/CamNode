@@ -30,14 +30,22 @@
 
   const hex = (value) => value.toString(16).padStart(2, '0');
 
-  /** Derive the MSE codec string from the avcC/hvcC box inside the init segment. */
+  /**
+   * Derive the MSE codec string from the init segment. Both tracks have to be
+   * listed: a SourceBuffer created for video only rejects a stream that also
+   * carries audio.
+   */
   function codecFromInit(bytes) {
+    let video = 'avc1.640028';
     const avc = findAscii(bytes, 'avcC');
     if (avc >= 0 && bytes.length > avc + 7) {
-      return `avc1.${hex(bytes[avc + 5])}${hex(bytes[avc + 6])}${hex(bytes[avc + 7])}`;
+      video = `avc1.${hex(bytes[avc + 5])}${hex(bytes[avc + 6])}${hex(bytes[avc + 7])}`;
+    } else if (findAscii(bytes, 'hvcC') >= 0) {
+      video = 'hvc1.1.6.L93.B0';
     }
-    if (findAscii(bytes, 'hvcC') >= 0) return 'hvc1.1.6.L93.B0';
-    return 'avc1.640028';
+    // The server re-encodes camera audio to AAC-LC when there is any.
+    const hasAudio = findAscii(bytes, 'mp4a') >= 0;
+    return hasAudio ? `${video}, mp4a.40.2` : video;
   }
 
   class LivePlayer {
@@ -57,6 +65,11 @@
       this.quality = 'sub';
       this.retries = 0;
       this.retryTimer = null;
+      // Rolling window of received chunks, used to measure the real bitrate.
+      this.traffic = [];
+      this.totalBytes = 0;
+      this.lastQuality = null;
+      this.fps = 0;
       this.onUpdateEnd = () => {
         this.afterAppend();
         this.pump();
@@ -141,6 +154,11 @@
     /* ------------------------------------------------------------ media */
 
     onBinary(bytes) {
+      const now = performance.now();
+      this.totalBytes += bytes.length;
+      this.traffic.push({ at: now, bytes: bytes.length });
+      while (this.traffic.length && now - this.traffic[0].at > 5000) this.traffic.shift();
+
       const type = boxType(bytes);
       if (type === 'ftyp') {
         // New init segment: the encoder (re)started, rebuild the pipeline.
@@ -306,6 +324,62 @@
     togglePause() {
       if (this.paused) this.resume();
       else this.pause();
+    }
+
+    /** Volume between 0 and 1. Anything at or below 0 mutes the element. */
+    setVolume(value) {
+      const level = Math.min(1, Math.max(0, Number(value) || 0));
+      this.video.volume = level;
+      this.video.muted = level <= 0;
+      return level;
+    }
+
+    /**
+     * Live measurements for the info overlay: nothing here is taken from a
+     * stored setting, it is all what the browser is actually receiving now.
+     */
+    getStats() {
+      const now = performance.now();
+
+      let bitrate = 0;
+      if (this.traffic.length > 1) {
+        const span = (now - this.traffic[0].at) / 1000;
+        if (span > 0.2) {
+          const bytes = this.traffic.reduce((sum, item) => sum + item.bytes, 0);
+          bitrate = (bytes * 8) / span;
+        }
+      }
+
+      // Decoded frame counters give a real measured frame rate.
+      let dropped = null;
+      if (typeof this.video.getVideoPlaybackQuality === 'function') {
+        const quality = this.video.getVideoPlaybackQuality();
+        dropped = quality.droppedVideoFrames;
+        if (this.lastQuality) {
+          const frames = quality.totalVideoFrames - this.lastQuality.frames;
+          const seconds = (now - this.lastQuality.at) / 1000;
+          if (seconds >= 0.5 && frames >= 0) this.fps = frames / seconds;
+        }
+        this.lastQuality = { frames: quality.totalVideoFrames, at: now };
+      }
+
+      const buffered = this.video.buffered;
+      const ahead = buffered.length ? buffered.end(buffered.length - 1) - this.video.currentTime : 0;
+
+      return {
+        state: this.state,
+        codec: this.codec,
+        width: this.video.videoWidth,
+        height: this.video.videoHeight,
+        fps: this.fps,
+        bitrate,
+        dropped,
+        buffered: ahead,
+        totalBytes: this.totalBytes,
+        quality: this.quality,
+        hasAudio: !!(this.codec && this.codec.indexOf('mp4a') !== -1),
+        volume: this.video.muted ? 0 : this.video.volume,
+      };
     }
 
     /** Grab the currently displayed frame as a JPEG blob. */

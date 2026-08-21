@@ -44,6 +44,7 @@
               <div class="player-panel">
                 <div class="player-stage" id="player-stage">
                   <video id="live-video" playsinline muted autoplay></video>
+                  <div class="stream-info" id="stream-info"></div>
                   <div class="player-overlay" id="live-overlay">Select a camera to start the live view</div>
                 </div>
                 <div class="player-controls">
@@ -52,7 +53,12 @@
                   <button class="btn" id="btn-golive" title="Jump back to the newest frame. Also reconnects a stream that dropped" disabled>Go live</button>
                   <button class="btn" id="btn-snapshot" title="Save the frame you are looking at as a JPEG in Snapshots. Falls back to a fresh grab from the camera if the player has no frame yet" disabled>Snapshot</button>
                   <button class="btn rec" id="btn-record" title="Start or stop recording this camera by hand. Manual recordings run until you stop them, unlike event recordings" disabled>Record</button>
+                  <span class="volume-group">
+                    <button class="btn icon" id="btn-mute" title="Mute or unmute the live sound. The stream starts muted because browsers block sound until you ask for it." disabled>🔇</button>
+                    <input type="range" id="volume" min="0" max="100" step="1" value="0" title="Live sound volume. Audio is only present if the camera sends any." disabled />
+                  </span>
                   <span class="spacer"></span>
+                  <button class="btn" id="btn-info" title="Show what this stream is actually delivering right now: codec, resolution, measured frame rate and bitrate" disabled>Info</button>
                   <button class="btn" id="btn-image" title="Adjust the picture: brightness, contrast and more, either only for this preview or on the camera itself" disabled>Image</button>
                   <span class="zoom-group">
                     <button class="btn icon" id="btn-zoom-out" title="Zoom out" disabled>&minus;</button>
@@ -310,6 +316,7 @@
     <script src="/js/player.js"></script>
     <script src="/js/zoom.js"></script>
     <script src="/js/ui.js"></script>
+    <script src="/js/recording-player.js"></script>
     <script src="/js/app.js"></script>
   </body>
 </html>

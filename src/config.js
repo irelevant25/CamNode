@@ -40,6 +40,7 @@ const config = {
   recordingsDir: path.join(dataDir, 'recordings'),
   snapshotsDir: path.join(dataDir, 'snapshots'),
   thumbnailsDir: path.join(dataDir, 'thumbnails'),
+  waveformsDir: path.join(dataDir, 'waveforms'),
   secret: env('APP_SECRET', 'insecure-development-secret-change-me'),
   admin: {
     username: env('ADMIN_USERNAME', 'admin'),
@@ -72,6 +73,7 @@ function ensureDirs() {
     config.recordingsDir,
     config.snapshotsDir,
     config.thumbnailsDir,
+    config.waveformsDir,
   ]) {
     fs.mkdirSync(dir, { recursive: true });
   }

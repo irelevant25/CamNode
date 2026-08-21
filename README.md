@@ -63,6 +63,7 @@ Everything lives in the `camera-data` volume mounted at `/data`:
 /data/recordings/<cameraId>/<date>/<timestamp>_<camera>_<trigger>.mp4
 /data/snapshots/<cameraId>/<date>/<timestamp>_<camera>.jpg
 /data/thumbnails/<cameraId>/<date>/…jpg
+/data/waveforms/<cameraId>/<date>/…json    cached sound intensity per recording
 ```
 
 To keep the files on a specific disk, replace the named volume with a bind mount
@@ -141,6 +142,8 @@ are de-duplicated so they never record the same motion twice.
 | Snapshot      | Saves the displayed frame; falls back to a fresh grab from the camera if the player has no frame yet |
 | Record        | Starts/stops a manual recording of the main stream                             |
 | Image         | Picture adjustments – see below                                                |
+| Info          | Overlay with what the stream is really delivering: codec, resolution, measured frame rate and bitrate, buffer and dropped frames |
+| 🔊 + slider   | Live sound. Starts muted because browsers block audio until you interact with the page |
 | − / + / Reset | Zoom. The wheel (or a pinch) zooms around the cursor, dragging moves a zoomed picture, double click resets |
 | Sub / Main    | Which of the camera's two streams to watch                                     |
 | ⛶             | Fullscreen                                                                     |
@@ -176,6 +179,16 @@ The **Image** button offers two independent sets of controls:
 
 **Recordings** – filter by camera, trigger, status and time; play in place,
 download, delete one or many.
+
+Playback shows the **wall clock time of the frame you are watching**, not just a
+position, so "1:30 into the file" is answered as an actual time of day. Under the
+video are two aligned bars: a timeline labelled with real times, and a **sound
+intensity bar** built from the recording's audio, so you can see at a glance
+where something was audible. Both bars are clickable and draggable to seek.
+
+The intensity bar is computed on first playback (ffmpeg decodes the audio to low
+rate mono, reduced to RMS per bucket and converted to dBFS so ordinary sound is
+visible rather than a flat line) and cached in `/data/waveforms`.
 
 **Events** – every ONVIF notification with its topic, state and the recording it
 triggered.
@@ -223,7 +236,9 @@ browser  ◄── WebSocket /ws/updates ◄── bus (events, recording state,
 ```
 
 - One ffmpeg process per camera+quality for live view, shared by all viewers and
-  shut down ten seconds after the last one leaves.
+  shut down ten seconds after the last one leaves. Video is copied; audio is
+  re-encoded to AAC only because cameras usually speak G.711, which neither MP4
+  nor MediaSource can carry.
 - Recording uses `-c:v copy`, so there is no transcoding cost and the original
   camera quality is preserved. Audio is re-encoded to AAC only when the camera
   provides an audio track and the option is enabled.
@@ -245,7 +260,7 @@ POST   /api/cameras/:id/recording/start | stop
 POST   /api/cameras/:id/events/test               POST   /onvif/notify/:id/:token  (cameras only)
 GET    /api/cameras/:id/imaging                   PUT    /api/cameras/:id/imaging
 GET    /api/recordings                            GET    /api/recordings/:id
-GET    /api/recordings/:id/stream | download | thumbnail
+GET    /api/recordings/:id/stream | download | thumbnail | waveform
 DELETE /api/recordings/:id                        POST   /api/recordings/delete
 GET    /api/events | /api/events/types            DELETE /api/events/:id
 POST   /api/events/delete
