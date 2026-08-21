@@ -19,10 +19,12 @@ services:
     environment:
       TZ: "${TZ:-Europe/Bratislava}"
       DATA_DIR: /data
-      APP_SECRET: "${APP_SECRET:-please-change-me}"
+      # `:?` on purpose: refuse to start rather than come up with a guessable
+      # secret. Put these in a .env file next to this compose file.
+      APP_SECRET: "${APP_SECRET:?set APP_SECRET to a long random string}"
       # Only applied when the database is created for the first time.
       ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
-      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?set ADMIN_PASSWORD for the first-run account}"
       SESSION_HOURS: "${SESSION_HOURS:-72}"
       # Cameras POST their ONVIF events back to this address. A bridged
       # container IP is not reachable from a camera, so point this at the Docker

@@ -25,8 +25,10 @@ work, plain HTML/CSS/JS frontend with no build step.
 
 ## Building the image
 
-The image has to be built **on the machine running Docker**, because that is
-where the build happens – there is no registry involved. Pick whichever fits.
+Easiest is to let Portainer build it from the repository (see *Deploy with
+Portainer* below). These are the manual routes, for when you want the image on
+the host yourself. The build always happens **on the machine running Docker**;
+there is no registry involved.
 
 ### A. Copy the source to the Docker host and build there (simplest)
 
@@ -77,27 +79,36 @@ without a prebuilt binary (a NAS or Pi on ARM), compiles better-sqlite3.
 
 ## Deploy with Portainer
 
-1. Build the image on the host with one of the options above.
-2. Portainer → **Stacks** → **Add stack** → **Web editor**.
-3. Paste **`docker-compose.portainer.yml`** – it references the built image and
-   sets `pull_policy: never`, so Docker will not go looking for it on Docker Hub.
-4. Fill in the environment variables (below), then **Deploy the stack**.
+### Repository stack (recommended, now that the code is on GitHub)
 
-To update later, rebuild the image and redeploy the stack; `/data` is a named
-volume, so the database and recordings survive.
+Portainer clones the repo and builds the image itself, so nothing has to be
+copied to the host by hand and updating is a single click.
 
-If you would rather have Portainer do the building, use **Repository** instead
-of the web editor and point it at a git remote it can reach – a bare repo on the
-server (`git init --bare /srv/git/camera-recordings.git`, then push to it from
-your PC) is enough, no GitHub needed.
+1. Portainer → **Stacks** → **Add stack** → **Repository**.
+2. Repository URL: your remote. For a private repo, tick authentication and use
+   a personal access token.
+3. Compose path: `docker-compose.yml` (the one with `build:`).
+4. Add the environment variables below — `APP_SECRET`, `ADMIN_PASSWORD` and
+   `PUBLIC_URL` are required; the stack refuses to deploy without the first two.
+5. **Deploy the stack.** The first build takes a few minutes.
+
+To update: push, then **Pull and redeploy** in Portainer. `/data` is a named
+volume, so the database and recordings survive a rebuild.
+
+### Web editor with a prebuilt image
+
+If you would rather build the image yourself (see above), paste
+**`docker-compose.portainer.yml`** into the web editor instead. It has no
+`build:` section and sets `pull_policy: never`, so Docker will not go looking
+for the image on Docker Hub.
 
 ### Environment variables
 
 | Variable         | Default            | Meaning                                                        |
 | ---------------- | ------------------ | -------------------------------------------------------------- |
-| `APP_SECRET`     | *(insecure)*       | **Set this.** Signs sessions and encrypts stored camera passwords |
+| `APP_SECRET`     | **required**       | Signs sessions and derives the key encrypting stored camera passwords. The stack refuses to deploy without it. |
 | `ADMIN_USERNAME` | `admin`            | Created on first start only                                     |
-| `ADMIN_PASSWORD` | `changeme`         | Created on first start only – change it after logging in        |
+| `ADMIN_PASSWORD` | **required**       | Created on first start only. Also refuses to deploy without it. |
 | `HTTP_PORT`      | `8080`             | Host port published by the stack                                |
 | `TZ`             | `Europe/Bratislava`| Timezone for folder names and displayed times                   |
 | `SESSION_HOURS`  | `72`               | Session cookie lifetime                                         |
@@ -350,8 +361,8 @@ Known and accepted for now, kept here so they are not forgotten.
 
 | Item | State | Why it matters later |
 | --- | --- | --- |
-| `APP_SECRET` is the default | Accepted | It signs sessions and encrypts the camera password in SQLite. Anyone who can read the database can recover that password. Set it before this is reachable by anyone else — note that changing it invalidates stored camera passwords, so re-enter them afterwards. |
-| Admin password is `admin` | Accepted | Same reasoning. The UI shows a warning banner until it is changed. |
+| `APP_SECRET` is the default *when run locally* | Accepted for local use | It signs sessions and derives the key encrypting the camera password in SQLite, so anyone who can read the database can recover that password. The UI shows a banner while the value is weak or shorter than 16 characters. The Docker stacks refuse to deploy without a real one, so this only applies to `npm start` on your PC — changing it later invalidates stored camera passwords, so re-enter them afterwards. |
+| Admin password is `admin` *when run locally* | Accepted for local use | Same reasoning; the banner stays until it is changed. Both compose files require `ADMIN_PASSWORD` to be set, so a deployed stack cannot come up with it. |
 | Portainer deployment unverified | To test | The image and stack are written but never built — Docker was not running. Expect the first build to take a few minutes (it compiles better-sqlite3 and installs ffmpeg). |
 | `PUBLIC_URL` in Docker | Watch | Event push works today because the callback URL is auto-detected on a flat LAN. A bridged container's IP is *not* reachable from the camera, so this must be set to the host address when moving to Portainer, or events will silently stop arriving. |
 | Live view is H.264 only | Accepted | MediaSource cannot play H.265. Fine for the C325WB; relevant if a future camera defaults to H.265. Recording is unaffected — it copies whatever the camera sends. |

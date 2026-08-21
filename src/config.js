@@ -25,6 +25,18 @@ function env(name, fallback) {
   return value;
 }
 
+/** Values that mean "nobody set this yet" – they must not pass unnoticed. */
+const WEAK_SECRETS = [
+  'insecure-development-secret-change-me',
+  'please-change-me',
+  'please-change-me-to-a-long-random-string',
+  'changeme',
+  'secret',
+  'password',
+];
+
+const WEAK_PASSWORDS = ['', 'admin', 'changeme', 'password', 'admin123'];
+
 function int(name, fallback) {
   const value = parseInt(env(name, ''), 10);
   return Number.isFinite(value) ? value : fallback;
@@ -45,7 +57,8 @@ const config = {
   admin: {
     username: env('ADMIN_USERNAME', 'admin'),
     password: env('ADMIN_PASSWORD', 'admin'),
-    isDefaultPassword: !env('ADMIN_PASSWORD', ''),
+    // Unset, or set to something anyone would guess first.
+    isDefaultPassword: WEAK_PASSWORDS.indexOf(env('ADMIN_PASSWORD', '')) !== -1,
   },
   sessionHours: int('SESSION_HOURS', 72),
   ffmpegPath: env('FFMPEG_PATH', 'ffmpeg'),
@@ -65,7 +78,13 @@ const config = {
   },
 };
 
-config.isDefaultSecret = config.secret === 'insecure-development-secret-change-me';
+/**
+ * A weak APP_SECRET is worse than it looks: it signs the session cookies *and*
+ * derives the key that encrypts camera passwords in the database. Catch the
+ * placeholders shipped in the example files, not just the built-in default.
+ */
+config.isDefaultSecret =
+  WEAK_SECRETS.indexOf(config.secret) !== -1 || String(config.secret).length < 16;
 
 function ensureDirs() {
   for (const dir of [
