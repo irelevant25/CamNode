@@ -15,9 +15,18 @@
 #                   encrypts camera passwords. Changing it later means
 #                   re-entering them.
 #   ADMIN_PASSWORD  first-run password for the admin account.
-#   PUBLIC_URL      http://<nas-ip>:8080 - REQUIRED. Cameras POST their ONVIF
-#                   events to this address, and a bridged container IP is not
-#                   reachable from a camera, so events would never arrive.
+#   PUBLIC_URL      http://<host-ip>:8080. Cameras POST their ONVIF events to
+#                   this address, and a bridged container IP is not reachable
+#                   from a camera, so events would never arrive without it.
+#                   Can also be set later in Settings, which overrides this.
+#
+# Portainer has a field for these. Synology's Container Manager does not, so put
+# them in a .env file in the same folder as this compose file:
+#
+#   /volume1/docker/<project>/.env
+#     APP_SECRET=...
+#     ADMIN_PASSWORD=...
+#     PUBLIC_URL=http://<host-ip>:8080
 # ---------------------------------------------------------------------------
 
 services:

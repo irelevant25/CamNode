@@ -109,6 +109,37 @@ copied to the host by hand and updating is a single click.
 To update: push, then **Pull and redeploy** in Portainer. `/data` is a named
 volume, so the database and recordings survive a rebuild.
 
+### Synology Container Manager
+
+Container Manager has no environment-variables field for Projects, so Compose
+reads them from a **`.env` file in the project folder**, next to the compose
+file. Without it the project fails to start with:
+
+```
+required variable APP_SECRET is missing a value
+```
+
+Create `/volume1/docker/<project>/.env` containing:
+
+```ini
+APP_SECRET=<a long random string>
+ADMIN_PASSWORD=<the first-run password>
+PUBLIC_URL=http://192.168.4.104:8080
+TZ=Europe/Bratislava
+```
+
+Generate the secret with `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`
+or any password manager. Nothing else needs setting.
+
+File Station cannot create a file, and hides names starting with a dot: write
+`.env` on your PC and upload it, use the **Text Editor** package, or over SSH
+`nano /volume1/docker/<project>/.env`. Tick *Show hidden files* in File Station
+if you want to see it afterwards.
+
+If you would rather not deal with a hidden file, replace the `${...}` references
+in the compose file with the literal values instead – the file is on your NAS,
+though it does then contain the secret in clear text.
+
 ### Ready-made image (Synology Container Manager, or Portainer's web editor)
 
 Use **`docker-compose.portainer.yml`**. It has no `build:` section and pulls the
