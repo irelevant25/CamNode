@@ -126,7 +126,7 @@ yourself, and uncomment `pull_policy: never` so Docker does not try to fetch it.
 | `HTTP_PORT`      | `8080`             | Host port published by the stack                                |
 | `TZ`             | `Europe/Bratislava`| Timezone for folder names and displayed times                   |
 | `SESSION_HOURS`  | `72`               | Session cookie lifetime                                         |
-| `PUBLIC_URL`     | auto-detected      | Address cameras POST events back to. **Required in Docker**, e.g. `http://192.168.1.10:8080` |
+| `PUBLIC_URL`     | auto-detected      | Address cameras POST events back to. Needed in Docker, e.g. `http://192.168.1.10:8080`. Can also be set in **Settings** afterwards, which overrides this. |
 | `LOG_LEVEL`      | `info`             | `error` \| `warn` \| `info` \| `debug`                          |
 
 Changing `APP_SECRET` later invalidates sessions and makes stored camera
@@ -290,7 +290,15 @@ repeats within 15 seconds are skipped, since cameras fire the same detection on
 several topics at once.
 
 **Settings** – storage stats, retention (delete recordings older than N days
-and/or keep the total under N GB, 0 disables), and the password change form.
+and/or keep the total under N GB, 0 disables), the **event callback address**
+and the password change form.
+
+The callback address is the one deployment value that can be corrected from
+inside the app: save it and every camera is re-subscribed immediately, no
+redeploy. `APP_SECRET` and `ADMIN_PASSWORD` cannot work that way – the first is
+needed to validate the login that would let you change it, and the second is
+only read when the database is created. After that, the password is changed
+here, or with `npm run reset-password` if it is lost.
 
 ---
 
@@ -388,7 +396,7 @@ Known and accepted for now, kept here so they are not forgotten.
 | `APP_SECRET` is the default *when run locally* | Accepted for local use | It signs sessions and derives the key encrypting the camera password in SQLite, so anyone who can read the database can recover that password. The UI shows a banner while the value is weak or shorter than 16 characters. The Docker stacks refuse to deploy without a real one, so this only applies to `npm start` on your PC — changing it later invalidates stored camera passwords, so re-enter them afterwards. |
 | Admin password is `admin` *when run locally* | Accepted for local use | Same reasoning; the banner stays until it is changed. Both compose files require `ADMIN_PASSWORD` to be set, so a deployed stack cannot come up with it. |
 | Portainer deployment unverified | To test | The image and stack are written but never built — Docker was not running. Expect the first build to take a few minutes (it compiles better-sqlite3 and installs ffmpeg). |
-| `PUBLIC_URL` in Docker | Watch | Event push works today because the callback URL is auto-detected on a flat LAN. A bridged container's IP is *not* reachable from the camera, so this must be set to the host address when moving to Portainer, or events will silently stop arriving. |
+| `PUBLIC_URL` in Docker | Watch | Event push works locally because the callback address is auto-detected on a flat LAN. A bridged container's IP is *not* reachable from the camera, so it must be set to the host address in Docker or events silently stop arriving. Fixable without redeploying: **Settings → Event callback address**, which overrides the environment variable and re-subscribes every camera. |
 | Live view is H.264 only | Accepted | MediaSource cannot play H.265. Fine for the C325WB; relevant if a future camera defaults to H.265. Recording is unaffected — it copies whatever the camera sends. |
 | Main stream delivers ~10 fps | Watch | The camera reports 20 fps in its profile. Probably the link rather than the camera. Only worth chasing if playback looks choppy. |
 | No HTTPS | Accepted | Fine on a LAN. Put it behind a reverse proxy with TLS before exposing it to the internet — the login cookie is not encrypted in transit otherwise. |

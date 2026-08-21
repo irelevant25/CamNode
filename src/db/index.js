@@ -106,6 +106,8 @@ const DEFAULT_SETTINGS = {
   retention_days: '0', // 0 = keep forever
   retention_max_gb: '0', // 0 = unlimited
   event_retention_days: '0',
+  // Empty = use PUBLIC_URL, or auto-detect per camera.
+  public_url: '',
 };
 
 function init() {

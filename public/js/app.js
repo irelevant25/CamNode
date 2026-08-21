@@ -1579,6 +1579,21 @@
         ui.toast(err.message, 'error');
       }
     });
+    $('set-public-url-save').addEventListener('click', async () => {
+      try {
+        const result = await api.put('/api/system/settings', { public_url: $('set-public-url').value });
+        ui.toast(
+          result.effective_public_url
+            ? `Cameras will now report to ${result.effective_public_url}`
+            : 'Callback address cleared, it will be detected per camera',
+          'success'
+        );
+        loadSettings();
+      } catch (err) {
+        ui.toast(err.message, 'error');
+      }
+    });
+
     $('pw-save').addEventListener('click', async () => {
       const next = $('pw-new').value;
       if (next !== $('pw-repeat').value) return ui.toast('New passwords do not match', 'error');
@@ -1599,6 +1614,14 @@
     $('set-retention-days').value = settings.settings.retention_days || 0;
     $('set-retention-gb').value = settings.settings.retention_max_gb || 0;
     $('set-event-days').value = settings.settings.event_retention_days || 0;
+    $('set-public-url').value = settings.settings.public_url || '';
+
+    const notes = {
+      settings: 'In use: the address saved here.',
+      environment: `In use: the PUBLIC_URL environment variable (${settings.effective_public_url}). Anything typed here overrides it.`,
+      auto: 'Not set, so each camera is told the local address this server reaches it from. That works on a flat LAN but not from Docker.',
+    };
+    $('set-public-url-note').textContent = notes[settings.public_url_source] || '';
 
     const disk = stats.disk || {};
     const tiles = [

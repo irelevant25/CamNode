@@ -2,6 +2,7 @@
 
 const net = require('net');
 const repo = require('../db/repo');
+const { getSetting } = require('../db/index');
 const { config } = require('../config');
 const onvif = require('./onvifClient');
 const recorder = require('./recorder');
@@ -50,16 +51,47 @@ function formatHost(address) {
 }
 
 /**
- * URL a camera should POST its notifications to. `PUBLIC_URL` wins; otherwise
- * we use the address our own traffic to that camera comes from, which is right
- * on a flat LAN but not inside a bridged Docker network.
+ * Base address cameras post their notifications to, in order of precedence:
+ * the value saved in Settings, then the PUBLIC_URL environment variable, then
+ * nothing (each camera falls back to the local address facing it).
+ *
+ * The saved setting comes first so a wrong address can be corrected in the UI
+ * without redeploying the container.
+ */
+function effectivePublicUrl() {
+  try {
+    const saved = getSetting('public_url', '');
+    if (saved) return saved;
+  } catch (err) {
+    /* database not ready yet */
+  }
+  return config.publicUrl || '';
+}
+
+function publicUrlSource() {
+  try {
+    if (getSetting('public_url', '')) return 'settings';
+  } catch (err) {
+    /* database not ready yet */
+  }
+  return config.publicUrl ? 'environment' : 'auto';
+}
+
+/**
+ * URL a camera should POST its notifications to. Falls back to the address our
+ * own traffic to that camera leaves from, which is right on a flat LAN but not
+ * inside a bridged Docker network.
  */
 async function consumerUrlFor(camera) {
   const token = repo.cameras.ensureNotifyToken(camera.id);
-  let base = config.publicUrl;
+  let base = effectivePublicUrl();
   if (!base) {
     const address = await localAddressFor(camera.host, camera.onvif_port);
-    if (!address) throw new Error('could not work out a local address the camera can reach – set PUBLIC_URL');
+    if (!address) {
+      throw new Error(
+        'could not work out an address the camera can reach – set the callback address in Settings'
+      );
+    }
     base = `http://${formatHost(address)}:${config.port}`;
   }
   return `${base.replace(/\/+$/, '')}/onvif/notify/${camera.id}/${token}`;
@@ -577,6 +609,11 @@ async function testEvents(cameraId) {
   return runtime.testEvents();
 }
 
+/** Re-subscribe every enabled camera, e.g. after the callback address changed. */
+function reloadAll() {
+  for (const camera of repo.cameras.list()) reload(camera.id);
+}
+
 function runtimeInfo() {
   const out = {};
   for (const [id, runtime] of runtimes) out[id] = runtime.info();
@@ -600,6 +637,9 @@ module.exports = {
   init,
   shutdown,
   reload,
+  reloadAll,
+  effectivePublicUrl,
+  publicUrlSource,
   startRuntime,
   stopRuntime,
   getReadyCamera,

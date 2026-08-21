@@ -3,7 +3,8 @@
 const fs = require('fs');
 const express = require('express');
 const { config } = require('../config');
-const { getDb, allSettings, setSetting } = require('../db/index');
+const { getDb, allSettings, getSetting, setSetting } = require('../db/index');
+const cameraManager = require('../services/cameraManager');
 const repo = require('../db/repo');
 const storage = require('../services/storage');
 const streamHub = require('../services/streamHub');
@@ -12,7 +13,7 @@ const retention = require('../services/retention');
 
 const router = express.Router();
 
-const ALLOWED_SETTINGS = ['retention_days', 'retention_max_gb', 'event_retention_days'];
+const NUMERIC_SETTINGS = ['retention_days', 'retention_max_gb', 'event_retention_days'];
 
 /** Directory scans are not free, so keep the result around for a minute. */
 let diskCache = { at: 0, value: null };
@@ -66,18 +67,46 @@ router.get('/stats', (req, res) => {
 });
 
 router.get('/settings', (req, res) => {
-  res.json({ settings: allSettings() });
+  res.json({
+    settings: allSettings(),
+    // What the cameras are actually told, once the env variable and the
+    // auto-detected address are taken into account.
+    effective_public_url: cameraManager.effectivePublicUrl(),
+    public_url_source: cameraManager.publicUrlSource(),
+  });
 });
 
 router.put('/settings', (req, res) => {
   const body = req.body || {};
-  for (const key of ALLOWED_SETTINGS) {
+  for (const key of NUMERIC_SETTINGS) {
     if (body[key] !== undefined) {
       const value = Math.max(0, parseFloat(body[key]) || 0);
       setSetting(key, value);
     }
   }
-  res.json({ settings: allSettings() });
+
+  // The address cameras post their events back to. Settable here so a wrong
+  // one can be corrected without redeploying the container.
+  if (body.public_url !== undefined) {
+    const raw = String(body.public_url || '').trim().replace(/\/+$/, '');
+    if (raw) {
+      let parsed;
+      try {
+        parsed = new URL(raw);
+      } catch (err) {
+        return res.status(400).json({ error: 'Callback address must be a URL, e.g. http://192.168.1.10:8080' });
+      }
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return res.status(400).json({ error: 'Callback address must start with http:// or https://' });
+      }
+    }
+    const changed = getSetting('public_url', '') !== raw;
+    setSetting('public_url', raw);
+    // Push subscriptions carry the old address until the cameras are told again.
+    if (changed) cameraManager.reloadAll();
+  }
+
+  res.json({ settings: allSettings(), effective_public_url: cameraManager.effectivePublicUrl() });
 });
 
 router.post('/retention/run', async (req, res) => {
