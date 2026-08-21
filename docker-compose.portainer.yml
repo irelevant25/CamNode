@@ -27,8 +27,8 @@
 #   /volume1/docker/<project>/.env
 #     APP_SECRET=...
 #     ADMIN_PASSWORD=...
-#     HTTP_PORT=4800
-#     PUBLIC_URL=http://<host-ip>:4800
+#     HTTP_PORT=8800
+#     PUBLIC_URL=http://<host-ip>:8800
 # ---------------------------------------------------------------------------
 
 services:

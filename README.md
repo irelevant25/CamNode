@@ -124,8 +124,8 @@ Create `/volume1/docker/<project>/.env` containing:
 ```ini
 APP_SECRET=<a long random string>
 ADMIN_PASSWORD=<the first-run password>
-HTTP_PORT=4800
-PUBLIC_URL=http://192.168.1.50:4800
+HTTP_PORT=8800
+PUBLIC_URL=http://192.168.1.50:8800
 TZ=Europe/Bratislava
 ```
 
@@ -134,7 +134,7 @@ or any password manager.
 
 `HTTP_PORT` is the port published on the NAS; inside the container the app always
 listens on 8080. **`PUBLIC_URL` must use the published port**, because that is
-the address a camera dials – pointing it at 8080 when the NAS publishes 4800
+the address a camera dials – pointing it at 8080 when the NAS publishes 8800
 means events are sent somewhere nothing is listening.
 
 File Station cannot create a file, and hides names starting with a dot: write
@@ -163,7 +163,7 @@ yourself, and uncomment `pull_policy: never` so Docker does not try to fetch it.
 | `HTTP_PORT`      | `8080`             | Host port published by the stack                                |
 | `TZ`             | `Europe/Bratislava`| Timezone for folder names and displayed times                   |
 | `SESSION_HOURS`  | `72`               | Session cookie lifetime                                         |
-| `PUBLIC_URL`     | auto-detected      | Address cameras POST events back to, **using the published port** – e.g. `http://192.168.1.50:4800` when `HTTP_PORT=4800`. Needed in Docker. Can also be set in **Settings** afterwards, which overrides this. |
+| `PUBLIC_URL`     | auto-detected      | Address cameras POST events back to, **using the published port** – e.g. `http://192.168.1.50:8800` when `HTTP_PORT=8800`. Needed in Docker. Can also be set in **Settings** afterwards, which overrides this. |
 | `LOG_LEVEL`      | `info`             | `error` \| `warn` \| `info` \| `debug`                          |
 
 Changing `APP_SECRET` later invalidates sessions and makes stored camera
@@ -236,7 +236,7 @@ be able to reach it:
 - On a flat LAN nothing is needed – the callback URL is derived from the local
   address your traffic to that camera comes from.
 - **Behind Docker or NAT you must set `PUBLIC_URL`** (e.g.
-  `http://192.168.1.50:4800`, using the published port) to an address the camera can reach, because a
+  `http://192.168.1.50:8800`, using the published port) to an address the camera can reach, because a
   bridged container's own IP is not routable from the camera.
 
 Use **Test events** on the Cameras page to check the whole path: it asks the
@@ -464,3 +464,16 @@ The player reports the codec it could not handle.
 **Recordings are 0 bytes / failed** – usually the camera refusing a second RTSP
 connection. Watch the sub stream instead of the main stream while recording, or
 lower the number of simultaneous viewers.
+
+**`address already in use` when the container starts** – something else on the
+host already listens on the published port. Find it, on the host:
+
+```bash
+sudo ss -tulpn | grep :8800          # or netstat -tulpn
+sudo docker ps --format '{{.Names}}\t{{.Ports}}' | grep 8800
+```
+
+A NAS runs plenty of its own services, so picking another port is usually
+quicker than freeing one. Change **both** `HTTP_PORT` and the port in
+`PUBLIC_URL` – they have to agree, or the app comes up fine and silently never
+receives an event.
