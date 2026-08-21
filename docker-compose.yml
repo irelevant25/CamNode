@@ -1,14 +1,11 @@
 # ---------------------------------------------------------------------------
-# Portainer stack for camera-recordings
+# Builds the image from the source next to this file. Use it on the Docker host:
 #
-# Portainer → Stacks → Add stack
-#   * "Repository" build: point it at this git repo, compose path
-#     docker-compose.yml (the image is built from the Dockerfile next to it)
-#   * or "Web editor": paste this file and replace `build: .` with a prebuilt
-#     `image:` reference.
+#     docker compose up -d --build
 #
-# Set the environment variables below in the Portainer "Environment variables"
-# section – at the very least APP_SECRET and ADMIN_PASSWORD.
+# To deploy through Portainer instead, build the image once (see "Building the
+# image" in README.md) and paste docker-compose.portainer.yml into the stack
+# editor – that one only references the finished image.
 # ---------------------------------------------------------------------------
 
 services:

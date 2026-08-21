@@ -23,20 +23,73 @@ work, plain HTML/CSS/JS frontend with no build step.
 
 ---
 
+## Building the image
+
+The image has to be built **on the machine running Docker**, because that is
+where the build happens – there is no registry involved. Pick whichever fits.
+
+### A. Copy the source to the Docker host and build there (simplest)
+
+Copy the project folder to the host, **without `node_modules` and without the
+`*.exe` ffmpeg binaries**: the node modules are compiled for Windows and would
+break inside the image, and the binaries are ~600 MB of dead weight.
+
+```bash
+# from the project folder on Windows (adjust user/host/path)
+scp -r Dockerfile docker-compose*.yml package.json package-lock.json src public \
+    user@192.168.4.104:/opt/camera-recordings/
+
+# then on the Docker host
+cd /opt/camera-recordings
+docker build -t camera-recordings:latest .
+```
+
+Either run it straight away with `docker compose up -d --build`, or leave the
+image built and deploy it through Portainer (see below).
+
+### B. Build on the host from your PC, over SSH
+
+The Docker CLI is on your PC even though the daemon is not; point it at the
+server and it ships the build context for you. Needs SSH key access to the host.
+
+```powershell
+$env:DOCKER_HOST = "ssh://user@192.168.4.104"
+docker build -t camera-recordings:latest .
+docker images camera-recordings          # confirm it landed on the server
+Remove-Item Env:\DOCKER_HOST
+```
+
+`.dockerignore` already keeps `node_modules`, `data` and the `*.exe` files out
+of what gets sent.
+
+### C. Build elsewhere and move the image as a file
+
+Only needed when the build machine has no network path to the host.
+
+```bash
+docker save camera-recordings:latest | gzip > camera-recordings.tar.gz
+# copy the file across, then on the Docker host:
+gunzip -c camera-recordings.tar.gz | docker load
+```
+
+The first build takes a few minutes: it installs ffmpeg and, on architectures
+without a prebuilt binary (a NAS or Pi on ARM), compiles better-sqlite3.
+
 ## Deploy with Portainer
 
-### Option A – stack from this git repository (recommended)
+1. Build the image on the host with one of the options above.
+2. Portainer → **Stacks** → **Add stack** → **Web editor**.
+3. Paste **`docker-compose.portainer.yml`** – it references the built image and
+   sets `pull_policy: never`, so Docker will not go looking for it on Docker Hub.
+4. Fill in the environment variables (below), then **Deploy the stack**.
 
-1. Portainer → **Stacks** → **Add stack** → **Repository**.
-2. Repository URL: this repo. Compose path: `docker-compose.yml`.
-3. Add the environment variables below.
-4. **Deploy the stack.** The image is built from the `Dockerfile` on first
-   deploy (a few minutes; it also installs ffmpeg).
+To update later, rebuild the image and redeploy the stack; `/data` is a named
+volume, so the database and recordings survive.
 
-### Option B – web editor
-
-Paste `docker-compose.yml` into the web editor. If you build and push the image
-yourself, replace `build: .` with your `image:` reference.
+If you would rather have Portainer do the building, use **Repository** instead
+of the web editor and point it at a git remote it can reach – a bare repo on the
+server (`git init --bare /srv/git/camera-recordings.git`, then push to it from
+your PC) is enough, no GitHub needed.
 
 ### Environment variables
 

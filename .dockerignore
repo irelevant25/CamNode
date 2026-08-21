@@ -1,8 +1,23 @@
+# Everything here is excluded from the build context that gets sent to the
+# Docker daemon. Keeping it small matters when the daemon is on another machine.
+
+# Windows ffmpeg build kept next to the app for local runs (~600 MB).
+# The image installs ffmpeg from apt instead.
+*.exe
+bin/
+
+# Built on Windows against a different Node ABI - the image builds its own.
 node_modules
+
+# Recordings, snapshots and the database.
 data
-test
+
 .git
 .gitignore
+.dockerignore
+test
 *.log
 .env
 README.md
+docker-compose*.yml
+Dockerfile

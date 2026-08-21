@@ -1,0 +1,62 @@
+# ---------------------------------------------------------------------------
+# Portainer stack: Stacks → Add stack → Web editor → paste this file.
+#
+# It has no `build:` section, because Portainer's web editor has no source to
+# build from. Build the image on the Docker host first:
+#
+#     docker build -t camera-recordings:latest .
+#
+# `pull_policy: never` stops Docker looking for that name on Docker Hub, where
+# it does not exist.
+#
+# Fill these in under Portainer's "Environment variables":
+#   APP_SECRET      long random string; signs sessions and encrypts camera
+#                   passwords. Changing it later means re-entering them.
+#   ADMIN_PASSWORD  first-run password for the admin account.
+#   PUBLIC_URL      http://<docker-host-ip>:8080 - REQUIRED here. Cameras post
+#                   their ONVIF events to this address, and a bridged container
+#                   IP is not reachable from a camera, so events would never
+#                   arrive without it.
+# ---------------------------------------------------------------------------
+
+services:
+  camera-recordings:
+    image: camera-recordings:latest
+    pull_policy: never
+    container_name: camera-recordings
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    environment:
+      TZ: "${TZ:-Europe/Bratislava}"
+      DATA_DIR: /data
+      APP_SECRET: "${APP_SECRET:-please-change-me}"
+      # Only applied when the database is created for the first time.
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-admin}"
+      SESSION_HOURS: "${SESSION_HOURS:-72}"
+      PUBLIC_URL: "${PUBLIC_URL:-}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+    volumes:
+      # Database, recordings, snapshots, thumbnails and waveforms.
+      - camera-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  camera-data:
+    # For files on a specific disk, replace the volume with a bind mount:
+    # (create the directory on the host first)
+    #
+    # volumes:
+    #   - /srv/camera-recordings:/data
