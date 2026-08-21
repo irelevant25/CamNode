@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS cameras (
   snapshot_url         TEXT,
   profiles_json        TEXT,
   record_on_event      INTEGER NOT NULL DEFAULT 1,
+  snapshot_on_event    INTEGER NOT NULL DEFAULT 0,
   event_mode           TEXT NOT NULL DEFAULT 'auto',
   notify_token         TEXT,
   event_record_seconds INTEGER NOT NULL DEFAULT 30,
@@ -88,9 +89,12 @@ CREATE TABLE IF NOT EXISTS snapshots (
   rel_path   TEXT NOT NULL,
   size_bytes INTEGER,
   source     TEXT NOT NULL DEFAULT 'manual',
+  event_id   INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_snapshots_camera_time ON snapshots(camera_id, created_at DESC);
+-- idx_snapshots_event is created in migrate(), after the column exists on
+-- databases that predate it.
 
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
@@ -135,7 +139,9 @@ function migrate() {
     cameras: [
       ['event_mode', "TEXT NOT NULL DEFAULT 'auto'"],
       ['notify_token', 'TEXT'],
+      ['snapshot_on_event', 'INTEGER NOT NULL DEFAULT 0'],
     ],
+    snapshots: [['event_id', 'INTEGER']],
   };
   for (const table of Object.keys(ADDITIONS)) {
     const existing = db
@@ -148,6 +154,7 @@ function migrate() {
       log.info(`migrated: added ${table}.${name}`);
     }
   }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_snapshots_event ON snapshots(event_id)');
 }
 
 function bootstrapAdmin() {

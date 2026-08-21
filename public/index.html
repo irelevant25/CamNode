@@ -19,6 +19,7 @@
         </div>
         <nav class="nav" id="nav">
           <button data-view="live" class="active" title="Watch a camera live, record manually and take snapshots">Live</button>
+          <button data-view="timeline" title="A whole day at a glance: when the camera recorded, when it saw something, and how busy each hour was">Timeline</button>
           <button data-view="recordings" title="Browse, play, download and delete stored recordings">Recordings</button>
           <button data-view="events" title="Every detection notification the cameras have sent">Events</button>
           <button data-view="snapshots" title="Still images saved from the live view">Snapshots</button>
@@ -89,6 +90,65 @@
                   <div id="live-recordings"><div class="empty">No recordings yet</div></div>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- -------------------------------------------------- TIMELINE -->
+        <section class="view" id="view-timeline">
+          <div class="view-head">
+            <h1>Timeline</h1>
+          </div>
+
+          <div class="filters">
+            <div class="field">
+              <label>Camera</label>
+              <select id="tl-camera" title="Which camera's day to show"></select>
+            </div>
+            <div class="field">
+              <label>Day</label>
+              <input type="date" id="tl-date" title="Day to show. Use the arrows to step through days." />
+            </div>
+            <button class="btn" id="tl-prev" title="Previous day">&larr; Day</button>
+            <button class="btn" id="tl-today" title="Jump back to today">Today</button>
+            <button class="btn" id="tl-next" title="Next day">Day &rarr;</button>
+            <span class="spacer" style="flex: 1"></span>
+            <span id="tl-summary" class="muted"></span>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <h3>Day at a glance</h3>
+              <span class="muted" style="font-size: 12px">Click a block to play it, or an event mark to jump there</span>
+            </div>
+
+            <div class="day-track" id="tl-track" title="Blue blocks are recordings; marks underneath are detection events. Click either one.">
+              <div class="day-grid" id="tl-grid"></div>
+              <div class="day-blocks" id="tl-blocks"></div>
+              <div class="day-events" id="tl-events"></div>
+              <div class="day-now" id="tl-now"></div>
+            </div>
+            <div class="day-hours" id="tl-hours"></div>
+          </div>
+
+          <div class="grid-2" style="margin-top: 18px">
+            <div class="card">
+              <div class="card-head">
+                <h3>Events per hour</h3>
+                <span class="muted" style="font-size: 12px" id="tl-hour-note"></span>
+              </div>
+              <div class="bar-chart" id="tl-hour-chart"></div>
+            </div>
+            <div class="card">
+              <div class="card-head">
+                <h3>Events per day</h3>
+                <select id="tl-activity-days" style="width: auto" title="How far back the daily chart looks">
+                  <option value="14">Last 14 days</option>
+                  <option value="30">Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                </select>
+              </div>
+              <div class="bar-chart" id="tl-day-chart" title="Click a day to open it above"></div>
             </div>
           </div>
         </section>

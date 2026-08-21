@@ -5,6 +5,7 @@ const repo = require('../db/repo');
 const { config } = require('../config');
 const onvif = require('./onvifClient');
 const recorder = require('./recorder');
+const snapshots = require('./snapshots');
 const streamHub = require('./streamHub');
 const { publish } = require('./bus');
 const { createLogger } = require('../logger');
@@ -18,6 +19,8 @@ const HEALTH_INTERVAL_MS = 60000;
 const PUSH_RENEW_MS = 45000;
 /** A pull-point that dies this fast has never worked – fall back to push. */
 const PULL_GRACE_MS = 30000;
+/** At most one event snapshot per burst of notifications. */
+const SNAPSHOT_COOLDOWN_MS = 15000;
 
 /** Which local address do packets to this camera leave from? */
 function localAddressFor(host, port) {
@@ -148,6 +151,7 @@ class CameraRuntime {
     this.consumerUrl = null;
     this.pushCount = 0;
     this.lastPushAt = null;
+    this.lastSnapshotAt = 0;
   }
 
   async start() {
@@ -346,9 +350,12 @@ class CameraRuntime {
     publish('event:created', { camera_id: this.cameraId, event: stored });
     repo.cameras.setStatus(this.cameraId, 'online', null);
 
-    if (!camera.record_on_event) return true;
     const initial = parsed.raw && parsed.raw.propertyOperation === 'Initialized';
     const isTrigger = parsed.state === true || (parsed.state === null && !initial);
+
+    if (isTrigger && camera.snapshot_on_event) this.snapshotForEvent(camera, stored);
+
+    if (!camera.record_on_event) return true;
     const active = recorder.getActive(this.cameraId);
     if (!isTrigger && !active) return true;
 
@@ -387,6 +394,21 @@ class CameraRuntime {
       event_stored: !!gotEvent,
       ok: pushed > 0 || !!gotEvent,
     };
+  }
+
+  /**
+   * Optional still image for an event. Cameras fire the same detection on
+   * several topics and repeat it, so one snapshot per burst is enough – each
+   * one costs a short RTSP connection to the camera.
+   */
+  snapshotForEvent(camera, event) {
+    const now = Date.now();
+    if (this.lastSnapshotAt && now - this.lastSnapshotAt < SNAPSHOT_COOLDOWN_MS) return;
+    this.lastSnapshotAt = now;
+    snapshots
+      .capture(withCredentials(camera), { source: 'event', eventId: event.id })
+      .then((snapshot) => log.debug(`camera ${this.cameraId}: event snapshot ${snapshot.rel_path}`))
+      .catch((err) => log.warn(`camera ${this.cameraId}: event snapshot failed: ${err.message}`));
   }
 
   startHealthChecks() {

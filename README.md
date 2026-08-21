@@ -177,6 +177,14 @@ The **Image** button offers two independent sets of controls:
   viewer, and they persist across reboots. Cameras that expose no imaging
   service simply show a note instead.
 
+**Timeline** – one local day per screen for a camera (or all of them). Recordings
+appear as blocks along a 24 hour band, detection events as marks underneath, and
+a red line shows "now" while you are looking at today. Click a block to play it.
+Step days with the arrows, jump with the date picker, or click a bar in the
+*events per day* chart to open that day. Underneath are two charts: events per
+hour for the selected day, and events per day over the last 14/30/90 days, which
+is how you spot a camera that has started over-triggering.
+
 **Recordings** – filter by camera, trigger, status and time; play in place,
 download, delete one or many.
 
@@ -190,8 +198,18 @@ The intensity bar is computed on first playback (ffmpeg decodes the audio to low
 rate mono, reduced to RMS per bucket and converted to dBFS so ordinary sound is
 visible rather than a flat line) and cached in `/data/waveforms`.
 
+**Clip export.** Play to the start of the interesting part, press *Set start*,
+play on, press *Set end*, then *Export clip*. The marked range is highlighted on
+the timeline and downloaded as its own MP4. The cut is a stream copy, so it is
+instant and lossless, which also means the start snaps back to the nearest
+keyframe before your mark – expect a second or two of lead-in.
+
 **Events** – every ONVIF notification with its topic, state and the recording it
-triggered.
+triggered. Enabling *Save a snapshot when a detection happens* on a camera (off
+by default) adds a still to each detection, shown as a thumbnail in this list so
+it can be scanned by eye. Each snapshot costs a short RTSP connection, and
+repeats within 15 seconds are skipped, since cameras fire the same detection on
+several topics at once.
 
 **Settings** – storage stats, retention (delete recordings older than N days
 and/or keep the total under N GB, 0 disables), and the password change form.
@@ -260,7 +278,8 @@ POST   /api/cameras/:id/recording/start | stop
 POST   /api/cameras/:id/events/test               POST   /onvif/notify/:id/:token  (cameras only)
 GET    /api/cameras/:id/imaging                   PUT    /api/cameras/:id/imaging
 GET    /api/recordings                            GET    /api/recordings/:id
-GET    /api/recordings/:id/stream | download | thumbnail | waveform
+GET    /api/recordings/:id/stream | download | thumbnail | waveform | clip
+GET    /api/timeline?camera_id=&date=       GET    /api/timeline/activity?days=
 DELETE /api/recordings/:id                        POST   /api/recordings/delete
 GET    /api/events | /api/events/types            DELETE /api/events/:id
 POST   /api/events/delete
@@ -271,6 +290,21 @@ WS     /ws/live?camera_id=&quality=sub|main       WS     /ws/updates
 ```
 
 ---
+
+## Loose ends worth revisiting
+
+Known and accepted for now, kept here so they are not forgotten.
+
+| Item | State | Why it matters later |
+| --- | --- | --- |
+| `APP_SECRET` is the default | Accepted | It signs sessions and encrypts the camera password in SQLite. Anyone who can read the database can recover that password. Set it before this is reachable by anyone else — note that changing it invalidates stored camera passwords, so re-enter them afterwards. |
+| Admin password is `admin` | Accepted | Same reasoning. The UI shows a warning banner until it is changed. |
+| Portainer deployment unverified | To test | The image and stack are written but never built — Docker was not running. Expect the first build to take a few minutes (it compiles better-sqlite3 and installs ffmpeg). |
+| `PUBLIC_URL` in Docker | Watch | Event push works today because the callback URL is auto-detected on a flat LAN. A bridged container's IP is *not* reachable from the camera, so this must be set to the host address when moving to Portainer, or events will silently stop arriving. |
+| Live view is H.264 only | Accepted | MediaSource cannot play H.265. Fine for the C325WB; relevant if a future camera defaults to H.265. Recording is unaffected — it copies whatever the camera sends. |
+| Main stream delivers ~10 fps | Watch | The camera reports 20 fps in its profile. Probably the link rather than the camera. Only worth chasing if playback looks choppy. |
+| No HTTPS | Accepted | Fine on a LAN. Put it behind a reverse proxy with TLS before exposing it to the internet — the login cookie is not encrypted in transit otherwise. |
+| ffmpeg lives in the project folder | Accepted | Works because the binary is resolved from the app directory as well as `PATH`. The Docker image installs ffmpeg properly, so this only applies to running it locally on Windows. |
 
 ## Troubleshooting
 

@@ -33,6 +33,7 @@ function createServer() {
   app.use('/api/recordings', auth.requireAuth, require('./routes/recordings'));
   app.use('/api/events', auth.requireAuth, require('./routes/events'));
   app.use('/api/snapshots', auth.requireAuth, require('./routes/snapshots'));
+  app.use('/api/timeline', auth.requireAuth, require('./routes/timeline'));
   app.use('/api/system', auth.requireAuth, require('./routes/system'));
 
   app.use(

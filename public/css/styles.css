@@ -637,6 +637,35 @@ label {
   pointer-events: none;
 }
 
+.track-selection {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: none;
+  background: rgba(34, 197, 94, 0.22);
+  border-left: 2px solid var(--success);
+  border-right: 2px solid var(--success);
+  pointer-events: none;
+}
+
+.clip-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.clip-bar .spacer {
+  flex: 1;
+}
+
+.clip-range {
+  font-size: 12.5px;
+}
+
 .track-labels {
   display: flex;
   justify-content: space-between;
@@ -670,6 +699,170 @@ label {
 .playback-meta {
   margin-top: 10px;
   font-size: 12.5px;
+}
+
+/* ---------------------------------------------------------- day timeline */
+
+.day-track {
+  position: relative;
+  height: 76px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.day-grid {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  pointer-events: none;
+}
+
+.day-grid span {
+  flex: 1;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.day-grid span:nth-child(6n + 1) {
+  border-right-color: rgba(255, 255, 255, 0.12);
+}
+
+.day-blocks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 10px;
+  height: 34px;
+}
+
+.day-block {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 3px;
+  background: rgba(59, 130, 246, 0.75);
+  cursor: pointer;
+  border: 1px solid rgba(147, 187, 253, 0.55);
+}
+
+.day-block:hover {
+  background: rgba(59, 130, 246, 1);
+}
+
+.day-block.event {
+  background: rgba(245, 158, 11, 0.75);
+  border-color: rgba(251, 191, 36, 0.6);
+}
+
+.day-block.event:hover {
+  background: rgba(245, 158, 11, 1);
+}
+
+.day-block.failed,
+.day-block.interrupted {
+  background: rgba(239, 68, 68, 0.6);
+  border-color: rgba(252, 165, 165, 0.5);
+}
+
+.day-events {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  height: 18px;
+}
+
+.day-mark {
+  position: absolute;
+  bottom: 0;
+  width: 3px;
+  height: 14px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--success);
+  cursor: pointer;
+}
+
+.day-mark.ended {
+  height: 7px;
+  background: var(--text-faint);
+}
+
+.day-mark:hover {
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.25);
+}
+
+.day-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(239, 68, 68, 0.8);
+  display: none;
+  pointer-events: none;
+}
+
+.day-hours {
+  display: flex;
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.day-hours span {
+  flex: 1;
+  text-align: left;
+}
+
+/* ------------------------------------------------------------ bar charts */
+
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 120px;
+  padding-top: 6px;
+}
+
+.bar {
+  flex: 1;
+  min-width: 3px;
+  background: rgba(59, 130, 246, 0.55);
+  border-radius: 2px 2px 0 0;
+  position: relative;
+  min-height: 2px;
+  cursor: default;
+}
+
+.bar.clickable {
+  cursor: pointer;
+}
+
+.bar:hover {
+  background: rgba(59, 130, 246, 0.95);
+}
+
+.bar.empty {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.bar-labels {
+  display: flex;
+  gap: 2px;
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.bar-labels span {
+  flex: 1;
+  min-width: 3px;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------- live stream info */
@@ -840,6 +1033,14 @@ td.actions {
 
 td.actions .btn {
   margin-left: 5px;
+}
+
+.event-thumb {
+  width: 64px;
+  height: 36px;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 8px;
 }
 
 .thumb {

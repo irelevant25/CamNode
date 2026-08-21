@@ -36,6 +36,7 @@ const CAMERA_FIELDS = [
   'snapshot_url',
   'profiles_json',
   'record_on_event',
+  'snapshot_on_event',
   'event_mode',
   'notify_token',
   'event_record_seconds',
@@ -48,6 +49,7 @@ function mapCamera(row) {
   const camera = Object.assign({}, row);
   camera.enabled = !!row.enabled;
   camera.record_on_event = !!row.record_on_event;
+  camera.snapshot_on_event = !!row.snapshot_on_event;
   camera.record_audio = !!row.record_audio;
   camera.profiles = row.profiles_json ? safeJson(row.profiles_json, []) : [];
   camera.has_password = !!row.password_enc;
@@ -206,6 +208,7 @@ function normaliseCameraInput(input, existing) {
   if (input.snapshot_url !== undefined) data.snapshot_url = input.snapshot_url || null;
   if (input.profiles !== undefined) data.profiles_json = JSON.stringify(input.profiles || []);
   if (input.record_on_event !== undefined) data.record_on_event = boolInt(input.record_on_event, 1);
+  if (input.snapshot_on_event !== undefined) data.snapshot_on_event = boolInt(input.snapshot_on_event, 0);
   if (input.event_mode !== undefined) {
     const mode = String(input.event_mode || 'auto');
     data.event_mode = ['auto', 'pull', 'push', 'off'].indexOf(mode) !== -1 ? mode : 'auto';
@@ -305,7 +308,8 @@ const events = {
       .get(params).c;
     const rows = getDb()
       .prepare(
-        `SELECT e.*, c.name AS camera_name
+        `SELECT e.*, c.name AS camera_name,
+                (SELECT s.id FROM snapshots s WHERE s.event_id = e.id ORDER BY s.id LIMIT 1) AS snapshot_id
            FROM events e LEFT JOIN cameras c ON c.id = e.camera_id
            ${clause}
           ORDER BY e.received_at DESC, e.id DESC
@@ -313,6 +317,34 @@ const events = {
       )
       .all(params.concat([filters.limit || 100, filters.offset || 0]));
     return { total, rows };
+  },
+
+  /** Every event in a time range, oldest first – used by the timeline. */
+  inRange(cameraId, fromIso, toIso) {
+    return getDb()
+      .prepare(
+        `SELECT e.id, e.camera_id, e.type, e.label, e.state, e.received_at, e.recording_id,
+                (SELECT s.id FROM snapshots s WHERE s.event_id = e.id ORDER BY s.id LIMIT 1) AS snapshot_id
+           FROM events e
+          WHERE e.received_at >= ? AND e.received_at < ?
+            ${cameraId ? 'AND e.camera_id = ?' : ''}
+          ORDER BY e.received_at`
+      )
+      .all(cameraId ? [fromIso, toIso, cameraId] : [fromIso, toIso]);
+  },
+
+  /** Event counts per calendar day, for the activity chart. */
+  dailyCounts(cameraId, days) {
+    return getDb()
+      .prepare(
+        `SELECT date(received_at, 'localtime') AS day, COUNT(*) AS count
+           FROM events
+          WHERE received_at >= datetime('now', ?)
+            ${cameraId ? 'AND camera_id = ?' : ''}
+          GROUP BY day
+          ORDER BY day`
+      )
+      .all(cameraId ? [`-${days} days`, cameraId] : [`-${days} days`]);
   },
   remove(id) {
     return getDb().prepare('DELETE FROM events WHERE id = ?').run(id).changes > 0;
@@ -425,6 +457,20 @@ const recordings = {
       .prepare("SELECT * FROM recordings WHERE camera_id = ? AND status = 'recording' ORDER BY id DESC")
       .get(cameraId);
   },
+  /** Recordings overlapping a time range, oldest first – used by the timeline. */
+  inRange(cameraId, fromIso, toIso) {
+    return getDb()
+      .prepare(
+        `SELECT r.*, c.name AS camera_name
+           FROM recordings r LEFT JOIN cameras c ON c.id = r.camera_id
+          WHERE r.started_at < ?
+            AND COALESCE(r.ended_at, datetime('now')) >= ?
+            ${cameraId ? 'AND r.camera_id = ?' : ''}
+          ORDER BY r.started_at`
+      )
+      .all(cameraId ? [toIso, fromIso, cameraId] : [toIso, fromIso]);
+  },
+
   olderThan(isoDate) {
     return getDb()
       .prepare("SELECT * FROM recordings WHERE status != 'recording' AND started_at < ? ORDER BY started_at")
@@ -446,9 +492,16 @@ const snapshots = {
   create(snap) {
     const info = getDb()
       .prepare(
-        'INSERT INTO snapshots (camera_id, filename, rel_path, size_bytes, source) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO snapshots (camera_id, filename, rel_path, size_bytes, source, event_id) VALUES (?, ?, ?, ?, ?, ?)'
       )
-      .run(snap.camera_id, snap.filename, snap.rel_path, snap.size_bytes || null, snap.source || 'manual');
+      .run(
+        snap.camera_id,
+        snap.filename,
+        snap.rel_path,
+        snap.size_bytes || null,
+        snap.source || 'manual',
+        snap.event_id || null
+      );
     return snapshots.get(info.lastInsertRowid);
   },
   get(id) {

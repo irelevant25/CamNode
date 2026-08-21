@@ -35,6 +35,7 @@
 
     setupNav();
     setupLive();
+    setupTimeline();
     setupRecordings();
     setupEvents();
     setupSnapshots();
@@ -44,8 +45,9 @@
     await loadCameras();
     connectUpdates();
 
+    const views = ['live', 'timeline', 'recordings', 'events', 'snapshots', 'cameras', 'settings'];
     const initial = (location.hash || '#live').slice(1);
-    showView(['live', 'recordings', 'events', 'snapshots', 'cameras', 'settings'].indexOf(initial) >= 0 ? initial : 'live');
+    showView(views.indexOf(initial) >= 0 ? initial : 'live');
 
     state.recordingTimer = setInterval(updateRecordingBadges, 1000);
   }
@@ -83,6 +85,10 @@
       button.classList.toggle('active', button.dataset.view === view);
     });
 
+    if (view === 'timeline') {
+      loadTimeline();
+      loadActivity();
+    }
     if (view === 'recordings') loadRecordings();
     if (view === 'events') loadEvents();
     if (view === 'snapshots') loadSnapshots();
@@ -102,6 +108,7 @@
     renderRail();
     renderCameraCards();
     fillCameraSelects();
+    fillTimelineCameras();
     if (!state.activeCameraId && state.cameras.length) selectCamera(state.cameras[0].id);
     if (state.activeCameraId && !state.cameras.some((c) => c.id === state.activeCameraId)) {
       stopLive();
@@ -297,6 +304,7 @@
       rtsp_transport: 'tcp',
       enabled: true,
       record_on_event: true,
+      snapshot_on_event: false,
       event_mode: 'auto',
       event_record_seconds: 30,
       max_record_seconds: 900,
@@ -359,6 +367,7 @@
         </select>
         <p class="hint">Tapo cameras accept a pull-point subscription but reset every poll, so they need push. In push mode the camera posts events back to this server, so set <code>PUBLIC_URL</code> when running in Docker.</p>
       </div>
+      <div class="field"><label class="checkbox" title="Save a still image with each detection, so the Events list can be scanned by eye. Each one opens a short connection to the camera, and repeats within 15 seconds are skipped."><input type="checkbox" id="cam-snapshot-event" ${values.snapshot_on_event ? 'checked' : ''} /> Save a snapshot when a detection happens</label></div>
       <div class="field"><label class="checkbox" title="Include the camera's microphone in recordings, re-encoded to AAC. Ignored if the stream carries no audio. The live view is always silent."><input type="checkbox" id="cam-audio" ${values.record_audio ? 'checked' : ''} /> Record audio (when the camera provides it)</label></div>
       <div class="field"><label class="checkbox" title="Untick to leave the camera configured but stop connecting to it: no events, no automatic recording. Stored recordings are kept."><input type="checkbox" id="cam-enabled" ${values.enabled ? 'checked' : ''} /> Enabled (connect and listen for events)</label></div>
     `;
@@ -400,6 +409,7 @@
         event_record_seconds: Number(modal.querySelector('#cam-event-seconds').value) || 30,
         max_record_seconds: Number(modal.querySelector('#cam-max-seconds').value) || 900,
         record_on_event: modal.querySelector('#cam-on-event').checked,
+        snapshot_on_event: modal.querySelector('#cam-snapshot-event').checked,
         event_mode: modal.querySelector('#cam-event-mode').value,
         record_audio: modal.querySelector('#cam-audio').checked,
         enabled: modal.querySelector('#cam-enabled').checked,
@@ -927,6 +937,187 @@
     }
   });
 
+  /* --------------------------------------------------------- timeline */
+
+  function setupTimeline() {
+    $('tl-date').value = todayKey();
+
+    $('tl-prev').addEventListener('click', () => shiftDay(-1));
+    $('tl-next').addEventListener('click', () => shiftDay(1));
+    $('tl-today').addEventListener('click', () => {
+      $('tl-date').value = todayKey();
+      loadTimeline();
+    });
+    $('tl-date').addEventListener('change', loadTimeline);
+    $('tl-camera').addEventListener('change', () => {
+      loadTimeline();
+      loadActivity();
+    });
+    $('tl-activity-days').addEventListener('change', loadActivity);
+
+    $('tl-track').addEventListener('click', (event) => {
+      const block = event.target.closest('[data-recording]');
+      if (block) return playRecording(Number(block.dataset.recording));
+      const mark = event.target.closest('[data-event-recording]');
+      if (mark) return playRecording(Number(mark.dataset.eventRecording));
+    });
+
+    $('tl-day-chart').addEventListener('click', (event) => {
+      const bar = event.target.closest('[data-day]');
+      if (!bar) return;
+      $('tl-date').value = bar.dataset.day;
+      loadTimeline();
+    });
+  }
+
+  function todayKey() {
+    const now = new Date();
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+
+  function shiftDay(days) {
+    const parts = ($('tl-date').value || todayKey()).split('-');
+    const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    date.setDate(date.getDate() + days);
+    const pad = (value) => String(value).padStart(2, '0');
+    $('tl-date').value = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    loadTimeline();
+  }
+
+  function fillTimelineCameras() {
+    const select = $('tl-camera');
+    const current = select.value;
+    select.innerHTML =
+      '<option value="">All cameras</option>' +
+      state.cameras.map((camera) => `<option value="${camera.id}">${esc(camera.name)}</option>`).join('');
+    if (current) select.value = current;
+    else if (state.activeCameraId) select.value = String(state.activeCameraId);
+  }
+
+  async function loadTimeline() {
+    const params = new URLSearchParams();
+    if ($('tl-camera').value) params.set('camera_id', $('tl-camera').value);
+    params.set('date', $('tl-date').value || todayKey());
+
+    let data;
+    try {
+      data = await api.get(`/api/timeline?${params.toString()}`);
+    } catch (err) {
+      return ui.toast(err.message, 'error');
+    }
+
+    const dayStart = new Date(data.from).getTime();
+    const dayLength = new Date(data.to).getTime() - dayStart;
+    const position = (iso) => ((new Date(iso).getTime() - dayStart) / dayLength) * 100;
+
+    $('tl-grid').innerHTML = new Array(24).fill('<span></span>').join('');
+    $('tl-hours').innerHTML = new Array(12)
+      .fill(0)
+      .map((_, i) => `<span>${String(i * 2).padStart(2, '0')}:00</span>`)
+      .join('');
+
+    $('tl-blocks').innerHTML = data.recordings
+      .map((rec) => {
+        const left = Math.max(0, position(rec.started_at));
+        const endIso = rec.ended_at || new Date().toISOString();
+        const width = Math.max(0.25, Math.min(100 - left, position(endIso) - left));
+        const label =
+          `${rec.camera_name || ''} ${ui.formatDateTime(rec.started_at)} · ` +
+          `${rec.status === 'recording' ? 'still recording' : ui.formatDuration(rec.duration_seconds)} · ` +
+          `${rec.trigger_type} · ${ui.formatBytes(rec.size_bytes)}`;
+        const classes = ['day-block', rec.trigger_type === 'event' ? 'event' : '', rec.status].filter(Boolean).join(' ');
+        return `<div class="${esc(classes)}" style="left:${left}%;width:${width}%" data-recording="${rec.id}" title="${esc(label)}"></div>`;
+      })
+      .join('');
+
+    $('tl-events').innerHTML = data.events
+      .map((event) => {
+        const left = Math.max(0, Math.min(100, position(event.received_at)));
+        const label = `${ui.formatDateTime(event.received_at)} · ${event.label || event.type}${event.state === 0 ? ' (ended)' : ''}`;
+        const attr = event.recording_id ? ` data-event-recording="${event.recording_id}"` : '';
+        return `<div class="day-mark ${event.state === 0 ? 'ended' : ''}" style="left:${left}%"${attr} title="${esc(label)}"></div>`;
+      })
+      .join('');
+
+    // Red "now" line, only while looking at today.
+    const now = Date.now();
+    const nowLine = $('tl-now');
+    if (now >= dayStart && now <= dayStart + dayLength) {
+      nowLine.style.display = 'block';
+      nowLine.style.left = `${((now - dayStart) / dayLength) * 100}%`;
+    } else {
+      nowLine.style.display = 'none';
+    }
+
+    $('tl-summary').textContent =
+      `${data.totals.recordings} recording(s) · ${ui.formatDuration(data.totals.recorded_seconds)} recorded · ` +
+      `${data.totals.events} event(s)`;
+
+    const busiest = data.hours.reduce((best, entry) => (entry.events > best.events ? entry : best), data.hours[0]);
+    $('tl-hour-note').textContent = busiest && busiest.events ? `busiest ${String(busiest.hour).padStart(2, '0')}:00` : '';
+    renderBars(
+      $('tl-hour-chart'),
+      data.hours.map((entry) => ({
+        value: entry.events,
+        label: String(entry.hour).padStart(2, '0'),
+        title: `${String(entry.hour).padStart(2, '0')}:00 – ${entry.events} event(s), ${ui.formatDuration(entry.recorded_seconds)} recorded`,
+      })),
+      6
+    );
+  }
+
+  async function loadActivity() {
+    const params = new URLSearchParams();
+    if ($('tl-camera').value) params.set('camera_id', $('tl-camera').value);
+    params.set('days', $('tl-activity-days').value);
+    let data;
+    try {
+      data = await api.get(`/api/timeline/activity?${params.toString()}`);
+    } catch (err) {
+      return;
+    }
+    const step = data.series.length > 30 ? 10 : data.series.length > 14 ? 5 : 2;
+    renderBars(
+      $('tl-day-chart'),
+      data.series.map((entry) => {
+        const parts = entry.day.split('-');
+        return {
+          value: entry.count,
+          label: `${parts[2]}.${parts[1]}`,
+          title: `${parts[2]}.${parts[1]}.${parts[0]} – ${entry.count} event(s). Click to open this day.`,
+          day: entry.day,
+        };
+      }),
+      step
+    );
+  }
+
+  /** Simple bar chart: `labelEvery` keeps the axis readable. */
+  function renderBars(container, items, labelEvery) {
+    const max = items.reduce((best, item) => Math.max(best, item.value), 0);
+    const bars = items
+      .map((item) => {
+        const height = max ? Math.max(item.value ? 4 : 2, (item.value / max) * 100) : 2;
+        const classes = ['bar', item.value ? '' : 'empty', item.day ? 'clickable' : ''].filter(Boolean).join(' ');
+        const attr = item.day ? ` data-day="${esc(item.day)}"` : '';
+        return `<div class="${classes}" style="height:${height}%" title="${esc(item.title)}"${attr}></div>`;
+      })
+      .join('');
+    container.innerHTML = bars;
+
+    // The label row lives next to the chart so the bars stay flex children.
+    let labelRow = container.nextElementSibling;
+    if (!labelRow || !labelRow.classList.contains('bar-labels')) {
+      labelRow = document.createElement('div');
+      labelRow.className = 'bar-labels';
+      container.parentNode.insertBefore(labelRow, container.nextSibling);
+    }
+    labelRow.innerHTML = items
+      .map((item, index) => `<span>${index % labelEvery === 0 ? esc(item.label) : ''}</span>`)
+      .join('');
+  }
+
   /* ------------------------------------------------------- recordings */
 
   function setupRecordings() {
@@ -1114,6 +1305,14 @@
       updateEvSelection();
     });
     $('ev-body').addEventListener('click', async (event) => {
+      const shot = event.target.closest('[data-snapshot]');
+      if (shot) {
+        return ui.openModal({
+          title: 'Event snapshot',
+          wide: true,
+          body: `<img src="/api/snapshots/${Number(shot.dataset.snapshot)}/file" style="width:100%;border-radius:6px" alt="" />`,
+        });
+      }
       const play = event.target.closest('[data-play]');
       if (play) return playRecording(Number(play.dataset.play));
       const del = event.target.closest('[data-delete]');
@@ -1193,12 +1392,15 @@
           const recording = event.recording_id
             ? `<button class="btn sm" data-play="${event.recording_id}">Play</button>`
             : '<span class="muted">—</span>';
+          const shot = event.snapshot_id
+            ? `<img class="thumb event-thumb" src="/api/snapshots/${event.snapshot_id}/file" data-snapshot="${event.snapshot_id}" loading="lazy" alt="" title="Snapshot taken for this event – click to enlarge" />`
+            : '';
           return `
           <tr>
             <td><input type="checkbox" data-id="${event.id}" ${state.ev.selected.has(event.id) ? 'checked' : ''} /></td>
             <td class="mono">${esc(ui.formatDateTime(event.received_at))}</td>
             <td>${esc(event.camera_name || '—')}</td>
-            <td>${esc(event.label || event.type || '—')}</td>
+            <td>${shot}${esc(event.label || event.type || '—')}</td>
             <td>${stateLabel}</td>
             <td class="mono muted" title="${esc(event.topic)}">${esc((event.topic || '').split('/').slice(-2).join('/'))}</td>
             <td>${recording}</td>

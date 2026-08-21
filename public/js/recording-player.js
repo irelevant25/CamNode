@@ -35,6 +35,7 @@
 
       <div class="track" data-role="timeline" title="Time of day across the recording. Click or drag to jump there.">
         <div class="track-fill"></div>
+        <div class="track-selection"></div>
         <div class="track-head"></div>
       </div>
       <div class="track-labels" data-role="labels"></div>
@@ -43,6 +44,15 @@
         <canvas></canvas>
         <div class="track-head"></div>
         <div class="track-note">analysing audio…</div>
+      </div>
+
+      <div class="clip-bar">
+        <button class="btn sm" data-role="mark-in" title="Use the current position as the start of the clip">Set start</button>
+        <button class="btn sm" data-role="mark-out" title="Use the current position as the end of the clip">Set end</button>
+        <span class="clip-range mono muted" data-role="range">whole recording</span>
+        <button class="btn sm" data-role="clip-clear" title="Forget the marked range">Clear</button>
+        <span class="spacer"></span>
+        <button class="btn sm primary" data-role="clip-export" title="Download just the marked part. It is cut without re-encoding, so the start snaps to the nearest keyframe.">Export clip</button>
       </div>
 
       <div class="playback-meta muted"></div>`;
@@ -79,6 +89,8 @@
       `started ${ui.formatDateTime(recording.started_at)}`;
 
     let peaks = null;
+    let clipStart = null;
+    let clipEnd = null;
 
     /* ----------------------------------------------------------- labels */
 
@@ -177,10 +189,65 @@
       element.addEventListener('pointercancel', stop);
     });
 
+    /* ------------------------------------------------------- clip export */
+
+    const rangeLabel = body.querySelector('[data-role="range"]');
+
+    function clipBounds() {
+      const from = clipStart === null ? 0 : clipStart;
+      const to = clipEnd === null ? duration : clipEnd;
+      return from < to ? { from, to } : { from: to, to: from };
+    }
+
+    function renderClip() {
+      if (clipStart === null && clipEnd === null) {
+        rangeLabel.textContent = 'whole recording';
+      } else {
+        const bounds = clipBounds();
+        const at = new Date(started.getTime() + bounds.from * 1000);
+        rangeLabel.textContent =
+          `${ui.formatDuration(bounds.from)} → ${ui.formatDuration(bounds.to)} ` +
+          `(${ui.formatDuration(bounds.to - bounds.from)}, from ${clockOf(at)})`;
+      }
+      const selection = timeline.querySelector('.track-selection');
+      if (!duration) return;
+      const bounds = clipBounds();
+      selection.style.left = `${(bounds.from / duration) * 100}%`;
+      selection.style.width = `${((bounds.to - bounds.from) / duration) * 100}%`;
+      selection.style.display = clipStart === null && clipEnd === null ? 'none' : 'block';
+    }
+
+    body.querySelector('[data-role="mark-in"]').addEventListener('click', () => {
+      clipStart = video.currentTime;
+      if (clipEnd !== null && clipEnd <= clipStart) clipEnd = null;
+      renderClip();
+    });
+    body.querySelector('[data-role="mark-out"]').addEventListener('click', () => {
+      clipEnd = video.currentTime;
+      if (clipStart !== null && clipStart >= clipEnd) clipStart = null;
+      renderClip();
+    });
+    body.querySelector('[data-role="clip-clear"]').addEventListener('click', () => {
+      clipStart = null;
+      clipEnd = null;
+      renderClip();
+    });
+    body.querySelector('[data-role="clip-export"]').addEventListener('click', () => {
+      const bounds = clipBounds();
+      if (bounds.to - bounds.from < 1) {
+        ui.toast('Mark a range of at least one second', 'error');
+        return;
+      }
+      const params = new URLSearchParams({ start: bounds.from.toFixed(2), end: bounds.to.toFixed(2) });
+      window.location.href = `/api/recordings/${recording.id}/clip?${params.toString()}`;
+      ui.toast(`Exporting ${ui.formatDuration(bounds.to - bounds.from)}…`);
+    });
+
     video.addEventListener('loadedmetadata', () => {
       if (Number.isFinite(video.duration) && video.duration > 0) duration = video.duration;
       drawLabels();
       render();
+      renderClip();
     });
     video.addEventListener('timeupdate', render);
     video.addEventListener('seeked', render);
@@ -188,6 +255,7 @@
 
     drawLabels();
     render();
+    renderClip();
     loadWave();
   }
 

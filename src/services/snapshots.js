@@ -62,6 +62,7 @@ async function capture(camera, options) {
     rel_path: target.relPath,
     size_bytes: size,
     source: opts.source || 'manual',
+    event_id: opts.eventId || null,
   });
   log.info(`camera ${camera.id}: snapshot saved -> ${target.relPath}`);
   publish('snapshot:created', { camera_id: camera.id, snapshot });

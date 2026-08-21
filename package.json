@@ -8,7 +8,7 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "reset-password": "node src/tools/reset-password.js",
-    "test": "node test/unit.test.js && node test/recorder.test.js"
+    "test": "node test/unit.test.js && node test/recorder.test.js && node test/timeline.test.js"
   },
   "engines": {
     "node": ">=20"
