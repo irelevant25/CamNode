@@ -18,6 +18,8 @@ const RECONNECT_MAX_MS = 300000;
 const HEALTH_INTERVAL_MS = 60000;
 /** Subscriptions are created with a 2 minute lifetime; renew well before that. */
 const PUSH_RENEW_MS = 45000;
+/** How often to replace the subscription outright, whatever Renew claims. */
+const PUSH_RESUBSCRIBE_MS = 9 * 60 * 1000;
 /** A pull-point that dies this fast has never worked – fall back to push. */
 const PULL_GRACE_MS = 30000;
 /** At most one event snapshot per burst of notifications. */
@@ -184,6 +186,19 @@ class CameraRuntime {
     this.pushCount = 0;
     this.lastPushAt = null;
     this.lastSnapshotAt = 0;
+    this.subscribedAt = null;
+    this.resubscribeTimer = null;
+    // Where pushed notifications end up, so losses can be located rather than
+    // guessed at.
+    this.counters = {
+      stored: 0,
+      duplicates: 0,
+      ignored: 0,
+      empty: 0,
+      recovered: 0,
+      unparsable: 0,
+      subscriptions: 0,
+    };
   }
 
   async start() {
@@ -300,8 +315,13 @@ class CameraRuntime {
       const camera = repo.cameras.getWithSecret(this.cameraId);
       if (!camera) return;
       this.consumerUrl = await consumerUrlFor(camera);
+      // Drop the previous one first; cameras keep a small number of
+      // subscriptions and abandoned ones count against that.
+      if (cam.events && cam.events.subscription) await onvif.unsubscribeEvents(cam);
       await onvif.subscribePush(cam, this.consumerUrl);
       if (this.stopped) return;
+      this.subscribedAt = new Date();
+      this.counters.subscriptions += 1;
       this.eventChannelError = null;
       this.setStatus('online', null);
       log.info(`camera ${this.cameraId}: subscribed for push notifications to ${this.consumerUrl}`);
@@ -329,34 +349,76 @@ class CameraRuntime {
         this.startPush();
       });
     }, PUSH_RENEW_MS);
+
+    // Renew is not always honoured. Some firmware answers it happily and drops
+    // the subscription at its original termination time anyway, which looks
+    // exactly like a camera that stopped detecting: no error, just silence.
+    // Building a fresh subscription periodically costs one request and puts a
+    // ceiling on how long that can go unnoticed.
+    this.resubscribeTimer = setTimeout(() => {
+      if (this.stopped || !this.cam) return;
+      log.debug(`camera ${this.cameraId}: renewing the push subscription from scratch`);
+      this.startPush();
+    }, PUSH_RESUBSCRIBE_MS);
   }
 
   stopPushRenew() {
     if (this.pushRenewTimer) clearInterval(this.pushRenewTimer);
     this.pushRenewTimer = null;
+    if (this.resubscribeTimer) clearTimeout(this.resubscribeTimer);
+    this.resubscribeTimer = null;
   }
 
   /** Called by the /onvif/notify endpoint for every pushed notification. */
   async handlePushBody(xml) {
     this.pushCount += 1;
     this.lastPushAt = new Date();
-    const messages = await onvif.parseNotificationXml(xml);
+
+    let messages = [];
+    try {
+      messages = await onvif.parseNotificationXml(xml);
+    } catch (err) {
+      // Never lose an event to a parser disagreement: read what we can.
+      messages = onvif.parseNotificationXmlLoosely(xml);
+      if (messages.length) {
+        this.counters.recovered += 1;
+        log.warn(
+          `camera ${this.cameraId}: notification did not parse as SOAP (${err.message}), read it loosely instead`
+        );
+      } else {
+        this.counters.unparsable += 1;
+        log.warn(
+          `camera ${this.cameraId}: could not read notification (${err.message}): ${String(xml).slice(0, 400)}`
+        );
+        return 0;
+      }
+    }
+    if (!messages.length) {
+      this.counters.empty += 1;
+      log.debug(`camera ${this.cameraId}: notification carried no message`);
+    }
+
     let handled = 0;
     for (const message of messages) {
       try {
-        if (this.handleEvent(message)) handled += 1;
+        const outcome = this.handleEvent(message);
+        if (outcome === 'stored') handled += 1;
+        else if (outcome === 'duplicate') this.counters.duplicates += 1;
+        else this.counters.ignored += 1;
       } catch (err) {
         log.error(`camera ${this.cameraId}: failed to handle pushed event: ${err.message}`);
       }
     }
+    this.counters.stored += handled;
     return handled;
   }
 
+  /** Returns 'stored', 'duplicate' or 'ignored' so losses can be accounted for. */
   handleEvent(message) {
     const parsed = onvif.parseEvent(message);
-    if (!parsed) return false;
+    if (!parsed) return 'ignored';
     const camera = repo.cameras.getWithSecret(this.cameraId);
-    if (!camera) return false;
+    if (!camera) return 'ignored';
 
     const incoming = {
       camera_id: this.cameraId,
@@ -373,7 +435,7 @@ class CameraRuntime {
     // Storing those again would also re-trigger a recording for old motion.
     if (repo.events.findDuplicate(incoming)) {
       log.debug(`camera ${this.cameraId}: ignoring repeated notification (${parsed.topic} @ ${parsed.received_at})`);
-      return false;
+      return 'duplicate';
     }
 
     this.lastEventAt = new Date();
@@ -387,9 +449,9 @@ class CameraRuntime {
 
     if (isTrigger && camera.snapshot_on_event) this.snapshotForEvent(camera, stored);
 
-    if (!camera.record_on_event) return true;
+    if (!camera.record_on_event) return 'stored';
     const active = recorder.getActive(this.cameraId);
-    if (!isTrigger && !active) return true;
+    if (!isTrigger && !active) return 'stored';
 
     try {
       const ready = withCredentials(camera);
@@ -401,7 +463,7 @@ class CameraRuntime {
     } catch (err) {
       log.error(`camera ${this.cameraId}: could not start event recording: ${err.message}`);
     }
-    return true;
+    return 'stored';
   }
 
   /**
@@ -524,6 +586,8 @@ class CameraRuntime {
       consumer_url: this.consumerUrl,
       notifications_received: this.pushCount,
       last_notification_at: this.lastPushAt ? this.lastPushAt.toISOString() : null,
+      subscribed_at: this.subscribedAt ? this.subscribedAt.toISOString() : null,
+      counters: Object.assign({}, this.counters),
     };
   }
 }

@@ -178,6 +178,25 @@
     return `<span class="pill ${active === 'off' ? 'off' : 'on'}">${esc(label)}</span>`;
   }
 
+  /**
+   * Where pushed notifications ended up since this camera last connected.
+   * Makes "events are going missing" answerable instead of a guess.
+   */
+  function eventDeliveryRow(camera) {
+    const counters = camera.event_counters;
+    if (!counters || !camera.notifications_received) return '';
+    const parts = [`${camera.notifications_received} received`, `${counters.stored} stored`];
+    if (counters.duplicates) parts.push(`${counters.duplicates} repeated`);
+    if (counters.recovered) parts.push(`${counters.recovered} recovered`);
+    if (counters.unparsable) parts.push(`${counters.unparsable} unreadable`);
+    const title =
+      'Notifications this camera has pushed since it last connected, and what happened to them. ' +
+      'Repeated ones are the same detection sent twice; cameras announce one event on several topics.';
+    return `
+      <div class="row"><span>Notifications</span><span title="${esc(title)}">${esc(parts.join(' · '))}</span></div>
+      <div class="row"><span>Last / subscribed</span><span>${esc(ui.formatRelative(camera.last_notification_at))} · ${esc(ui.formatRelative(camera.subscribed_at))}</span></div>`;
+  }
+
   function renderCameraCards() {
     const grid = $('camera-grid');
     if (!state.cameras.length) {
@@ -201,6 +220,7 @@
           <div class="row"><span>Recording profile</span><span>${esc(resolution)}</span></div>
           <div class="row"><span>Record on event</span><span>${camera.record_on_event ? `Yes · ${camera.event_record_seconds}s` : 'No'}</span></div>
           <div class="row"><span>Events</span><span>${eventChannelLabel(camera)}</span></div>
+          ${eventDeliveryRow(camera)}
           <div class="row"><span>Live viewers</span><span>${camera.live_viewers || 0}</span></div>
           <div class="row"><span>Last seen</span><span>${esc(ui.formatRelative(camera.last_seen_at))}</span></div>
           <div class="card-actions">

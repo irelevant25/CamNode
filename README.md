@@ -465,6 +465,28 @@ The player reports the codec it could not handle.
 connection. Watch the sub stream instead of the main stream while recording, or
 lower the number of simultaneous viewers.
 
+**Some events arrive, most do not** – these come over TCP, so they are not lost
+packets. The Cameras page shows what happened to every notification since the
+camera last connected: *received*, *stored*, *repeated*, *recovered*,
+*unreadable*, plus when the last one arrived and when the subscription was made.
+
+- **received is roughly equal to stored, but far below what the camera saw** –
+  the camera is not sending them. The subscription is the usual reason: some
+  firmware answers `Renew` happily and drops the subscription at its original
+  two minute termination time anyway, which looks exactly like a quiet camera.
+  The app rebuilds the subscription from scratch every nine minutes to bound
+  that. If *last notification* is consistently older than *subscribed*, it is
+  this.
+- **received is high but stored is low** – they are arriving and being
+  discarded. *repeated* counts identical notifications, which is normal and
+  harmless: cameras announce one detection on several topics and often twice.
+- **unreadable above zero** – the body did not parse. It is logged in full at
+  `LOG_LEVEL=debug`; the loose parser recovers most shapes, and *recovered*
+  counts those.
+
+Detection also has to stay enabled in the Tapo app; it silently stops sending
+while a detection feature is off or on a schedule.
+
 **`address already in use` when the container starts** – something else on the
 host already listens on the published port. Find it, on the host:
 

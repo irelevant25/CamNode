@@ -358,6 +358,53 @@ function parseNotificationXml(xml) {
   });
 }
 
+/**
+ * Last resort when the SOAP parser rejects a pushed body: pull the topic and
+ * the simple items straight out of the XML, shaped like the client's own output
+ * so it goes through the same normalisation. Recording an event we only half
+ * understand beats dropping it.
+ */
+function parseNotificationXmlLoosely(xml) {
+  if (!xml || typeof xml !== 'string') return [];
+  const blocks = xml.split(/<[a-z0-9]*:?NotificationMessage[\s>]/i).slice(1);
+  const out = [];
+
+  for (const block of blocks.length ? blocks : [xml]) {
+    const topic = /<[a-z0-9]*:?Topic\b[^>]*>\s*([^<]+?)\s*</i.exec(block);
+    if (!topic) continue;
+
+    const section = (name) => {
+      const match = new RegExp(`<[a-z0-9]*:?${name}\\b[^>]*>([\\s\\S]*?)</[a-z0-9]*:?${name}>`, 'i').exec(block);
+      return match ? match[1] : '';
+    };
+    // XML allows either quote style for attributes and cameras use both.
+    const items = (text) => {
+      const found = [];
+      const re = /<[a-z0-9]*:?SimpleItem\b[^>]*?Name=["']([^"']*)["'][^>]*?Value=["']([^"']*)["']/gi;
+      let match;
+      while ((match = re.exec(text)) !== null) found.push({ $: { Name: match[1], Value: match[2] } });
+      return found;
+    };
+
+    const time = /UtcTime=["']([^"']+)["']/i.exec(block);
+    const operation = /PropertyOperation=["']([^"']+)["']/i.exec(block);
+    out.push({
+      topic: { _: topic[1] },
+      message: {
+        message: {
+          $: {
+            UtcTime: time ? time[1] : undefined,
+            PropertyOperation: operation ? operation[1] : undefined,
+          },
+          source: { simpleItem: items(section('Source')) },
+          data: { simpleItem: items(section('Data')) },
+        },
+      },
+    });
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------ events */
 
 const TYPE_RULES = [
@@ -488,5 +535,6 @@ module.exports = {
   setSynchronizationPoint,
   unsubscribeEvents,
   parseNotificationXml,
+  parseNotificationXmlLoosely,
   parseEvent,
 };

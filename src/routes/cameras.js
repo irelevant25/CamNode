@@ -19,6 +19,10 @@ function decorate(camera) {
     last_event_at: runtime ? runtime.last_event_at : null,
     event_channel: runtime ? runtime.event_channel : null,
     event_channel_error: runtime ? runtime.event_channel_error : null,
+    event_counters: runtime ? runtime.counters : null,
+    notifications_received: runtime ? runtime.notifications_received : 0,
+    last_notification_at: runtime ? runtime.last_notification_at : null,
+    subscribed_at: runtime ? runtime.subscribed_at : null,
     active_recording: recorder.getActive(camera.id),
     live_viewers: streamHub
       .stats()
