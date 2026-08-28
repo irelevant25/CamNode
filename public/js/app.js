@@ -31,6 +31,7 @@
     state.user = me.user;
     $('user-name').textContent = me.user.username;
     renderWarnings(me.warnings || []);
+    renderVersion(me.build);
 
     player = new LivePlayer($('live-video'), { onStatus: onPlayerStatus });
 
@@ -59,6 +60,23 @@
       .join('');
   }
 
+
+  /** Which build is running, from the stamps baked into the image. */
+  function renderVersion(build) {
+    const badge = $('app-version');
+    if (!build || !build.version) return;
+    badge.textContent = build.version;
+    badge.classList.toggle('dev', !build.from_image);
+
+    const lines = [build.from_image ? 'Running image' : 'Running from source, not a published image'];
+    if (build.commit) lines.push(`commit ${build.commit}`);
+    if (build.built_at) lines.push(`built ${ui.formatDateTime(build.built_at)}`);
+    badge.title = lines.join('\n');
+
+    // Link straight to the commit this build came from, when we know it.
+    if (build.repo_url && build.commit) badge.href = `${build.repo_url}/commit/${build.commit}`;
+    else badge.removeAttribute('href');
+  }
   /* ------------------------------------------------------- navigation */
 
   function setupNav() {

@@ -326,6 +326,11 @@ it can be scanned by eye. Each snapshot costs a short RTSP connection, and
 repeats within 15 seconds are skipped, since cameras fire the same detection on
 several topics at once.
 
+The build is shown in the top right corner: the tag for a released image,
+otherwise `sha-<commit>`, linking to that commit on GitHub. It turns amber and
+reads `1.0.0-dev` when running from source rather than a published image, so
+there is never any doubt about which build a NAS is actually running.
+
 **Settings** – storage stats, retention (delete recordings older than N days
 and/or keep the total under N GB, 0 disables), the **event callback address**
 and the password change form.

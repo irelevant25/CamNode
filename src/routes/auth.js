@@ -56,7 +56,7 @@ router.post('/logout', (req, res) => {
 });
 
 router.get('/me', requireAuth, (req, res) => {
-  res.json({ user: req.user, warnings: warnings() });
+  res.json({ user: req.user, warnings: warnings(), build: config.buildInfo });
 });
 
 router.post('/password', requireAuth, (req, res) => {

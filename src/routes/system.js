@@ -62,7 +62,8 @@ router.get('/stats', (req, res) => {
     data_dir: config.dataDir,
     tools: require('../services/ffmpeg').getToolStatus(),
     uptime_seconds: Math.round(process.uptime()),
-    version: require('../../package.json').version,
+    version: config.buildInfo.version,
+    build: config.buildInfo,
   });
 });
 

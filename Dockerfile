@@ -24,6 +24,16 @@ ENV NODE_ENV=production \
     DATA_DIR=/data \
     PORT=8080
 
+# Stamped by the publish workflow so the running app can report which build it is.
+ARG APP_VERSION=
+ARG APP_COMMIT=
+ARG APP_BUILT_AT=
+ARG APP_REPO_URL=
+ENV APP_VERSION=${APP_VERSION}
+ENV APP_COMMIT=${APP_COMMIT}
+ENV APP_BUILT_AT=${APP_BUILT_AT}
+ENV APP_REPO_URL=${APP_REPO_URL}
+
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./

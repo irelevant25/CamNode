@@ -65,6 +65,13 @@ const config = {
   ffprobePath: env('FFPROBE_PATH', 'ffprobe'),
   logLevel: env('LOG_LEVEL', 'info'),
   cookieName: 'cr_session',
+  // Stamped into the image at build time; empty when running from source.
+  build: {
+    version: env('APP_VERSION', ''),
+    commit: env('APP_COMMIT', ''),
+    builtAt: env('APP_BUILT_AT', ''),
+    repoUrl: env('APP_REPO_URL', ''),
+  },
   // Base URL the cameras use to POST event notifications back to us (push
   // mode). Leave empty to auto-detect the local address facing each camera –
   // that works on a LAN but not from a bridged Docker network, where you have
@@ -85,6 +92,20 @@ const config = {
  */
 config.isDefaultSecret =
   WEAK_SECRETS.indexOf(config.secret) !== -1 || String(config.secret).length < 16;
+
+/**
+ * What to show as "the running version". A published image carries its tag or
+ * commit; running from source there is nothing to stamp, so fall back to the
+ * package version and say so rather than implying a release.
+ */
+config.buildInfo = {
+  version: config.build.version || `${require("../package.json").version}-dev`,
+  commit: config.build.commit || null,
+  short_commit: config.build.commit ? config.build.commit.slice(0, 7) : null,
+  built_at: config.build.builtAt || null,
+  repo_url: config.build.repoUrl || null,
+  from_image: !!config.build.version,
+};
 
 function ensureDirs() {
   for (const dir of [
