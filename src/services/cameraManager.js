@@ -357,9 +357,25 @@ class CameraRuntime {
     // ceiling on how long that can go unnoticed.
     this.resubscribeTimer = setTimeout(() => {
       if (this.stopped || !this.cam) return;
+      this.logDelivery();
       log.debug(`camera ${this.cameraId}: renewing the push subscription from scratch`);
       this.startPush();
     }, PUSH_RESUBSCRIBE_MS);
+  }
+
+  /** One line of accounting, so the log alone shows where events went. */
+  logDelivery() {
+    const c = this.counters;
+    const parts = [`${this.pushCount} received`, `${c.stored} stored`];
+    if (c.duplicates) parts.push(`${c.duplicates} repeated`);
+    if (c.recovered) parts.push(`${c.recovered} recovered`);
+    if (c.unparsable) parts.push(`${c.unparsable} unreadable`);
+    if (c.empty) parts.push(`${c.empty} empty`);
+    const last = this.lastPushAt ? this.lastPushAt.toISOString() : 'never';
+    log.info(
+      `camera ${this.cameraId}: notifications ${parts.join(', ')}; last arrived ${last}; ` +
+        `${c.subscriptions} subscription(s) since connect`
+    );
   }
 
   stopPushRenew() {
@@ -434,13 +450,15 @@ class CameraRuntime {
     // A camera replays its recent notifications whenever we re-subscribe.
     // Storing those again would also re-trigger a recording for old motion.
     if (repo.events.findDuplicate(incoming)) {
-      log.debug(`camera ${this.cameraId}: ignoring repeated notification (${parsed.topic} @ ${parsed.received_at})`);
+      log.info(`camera ${this.cameraId}: repeat of ${parsed.topic} at ${parsed.received_at}, not stored again`);
       return 'duplicate';
     }
 
     this.lastEventAt = new Date();
     const stored = repo.events.create(incoming);
-    log.debug(`camera ${this.cameraId}: ${parsed.label} (state=${parsed.state})`);
+    // At info level on purpose: this is the record of what the camera sent,
+    // and needing to raise the log level to see it defeats the point.
+    log.info(`camera ${this.cameraId}: ${parsed.label} (state=${parsed.state}) stored as event ${stored.id}`);
     publish('event:created', { camera_id: this.cameraId, event: stored });
     repo.cameras.setStatus(this.cameraId, 'online', null);
 
