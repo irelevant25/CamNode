@@ -115,6 +115,8 @@ async function get(recording) {
   }
 
   const result = await analyse(videoPath, duration);
+  // A file that is still growing would be cached with only its first part.
+  if (recording.status === 'recording') return result;
   try {
     // Cache the "no audio" answer too, so we do not re-decode every time.
     fs.writeFileSync(target.absPath, JSON.stringify(result || { peaks: null }));

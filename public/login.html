@@ -53,7 +53,8 @@
           const data = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(data.error || 'Sign in failed');
           const next = new URLSearchParams(location.search).get('next');
-          location.href = next && next.startsWith('/') ? next : '/';
+          // "//host" and "/\host" are other sites as far as a browser is concerned.
+          location.href = next && /^\/(?![\/\\])/.test(next) ? next : '/';
         } catch (err) {
           errorBox.textContent = err.message;
           button.disabled = false;

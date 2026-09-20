@@ -21,7 +21,7 @@ if (!password || password.length < 4) {
   process.exit(1);
 }
 
-db.init();
+db.init({ recover: false });
 const handle = db.getDb();
 const hash = bcrypt.hashSync(password, 10);
 const existing = handle.prepare('SELECT id FROM users WHERE username = ?').get(username);

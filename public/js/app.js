@@ -47,12 +47,41 @@
     await loadCameras();
     connectUpdates();
 
-    const views = ['live', 'timeline', 'recordings', 'events', 'snapshots', 'cameras', 'settings'];
     const initial = (location.hash || '#live').slice(1);
-    showView(views.indexOf(initial) >= 0 ? initial : 'live');
+    showView(VIEWS.indexOf(initial) >= 0 ? initial : 'live');
 
     state.recordingTimer = setInterval(updateRecordingBadges, 1000);
   }
+
+  /**
+   * Responses can arrive out of order: click two days quickly and the older
+   * answer may land last. Each loader takes a ticket and drops its result when
+   * a newer call has started since.
+   */
+  const loadTickets = {};
+  function beginLoad(name) {
+    const ticket = (loadTickets[name] = (loadTickets[name] || 0) + 1);
+    return () => ticket !== loadTickets[name];
+  }
+
+  /**
+   * A selection only ever holds rows that are on screen, so "Delete selected"
+   * cannot reach rows on another page or behind a filter that has since changed.
+   */
+  function keepVisibleSelection(list, ids, selectAll) {
+    const visible = new Set(ids);
+    for (const id of Array.from(list.selected)) if (!visible.has(id)) list.selected.delete(id);
+    if (selectAll) selectAll.checked = ids.length > 0 && ids.every((id) => list.selected.has(id));
+  }
+
+  /** Deleting the last rows of the last page must not leave an empty page behind. */
+  function steppedBack(list, rows, total) {
+    if (rows.length || list.offset === 0) return false;
+    list.offset = Math.max(0, (Math.ceil(total / list.limit) - 1) * list.limit);
+    return true;
+  }
+
+  const VIEWS = ['live', 'timeline', 'recordings', 'events', 'snapshots', 'cameras', 'settings'];
 
   function renderWarnings(warnings) {
     $('warnings').innerHTML = warnings
@@ -85,12 +114,16 @@
       if (button) showView(button.dataset.view);
     });
     $('logout').addEventListener('click', async () => {
-      await api.post('/api/auth/logout', {});
+      try {
+        await api.post('/api/auth/logout', {});
+      } catch (err) {
+        /* the login page is the right place either way */
+      }
       location.href = '/login.html';
     });
     window.addEventListener('hashchange', () => {
       const view = location.hash.slice(1);
-      if (view && view !== state.view) showView(view);
+      if (VIEWS.indexOf(view) >= 0 && view !== state.view) showView(view);
     });
   }
 
@@ -357,7 +390,7 @@
       (values.profiles || [])
         .map(
           (p) =>
-            `<option value="${esc(p.token)}" ${p.token === selected ? 'selected' : ''}>${esc(p.name)} · ${p.width || '?'}×${p.height || '?'} ${esc(p.encoding || '')}</option>`
+            `<option value="${esc(p.token)}" ${p.token === selected ? 'selected' : ''}>${esc(p.name)} · ${esc(p.width || '?')}×${esc(p.height || '?')} ${esc(p.encoding || '')}</option>`
         )
         .join('');
 
@@ -475,7 +508,7 @@
             info.profiles
               .map(
                 (p) =>
-                  `<option value="${esc(p.token)}" ${p.token === selected ? 'selected' : ''}>${esc(p.name)} · ${p.width || '?'}×${p.height || '?'} ${esc(p.encoding || '')}</option>`
+                  `<option value="${esc(p.token)}" ${p.token === selected ? 'selected' : ''}>${esc(p.name)} · ${esc(p.width || '?')}×${esc(p.height || '?')} ${esc(p.encoding || '')}</option>`
               )
               .join('');
         };
@@ -934,6 +967,8 @@
         api.get(`/api/events?camera_id=${cameraId}&limit=8`),
         api.get(`/api/recordings?camera_id=${cameraId}&limit=6`),
       ]);
+      // Another camera was picked while these were on their way.
+      if (cameraId !== state.activeCameraId) return;
       $('live-events-count').textContent = `${events.total} total`;
       $('live-events').innerHTML = events.events.length
         ? events.events
@@ -1088,9 +1123,11 @@
     if ($('tl-camera').value) params.set('camera_id', $('tl-camera').value);
     params.set('date', $('tl-date').value || todayKey());
 
+    const stale = beginLoad('timeline');
     let data;
     try {
       data = await api.get(`/api/timeline?${params.toString()}`);
+      if (stale()) return;
     } catch (err) {
       return ui.toast(err.message, 'error');
     }
@@ -1178,9 +1215,11 @@
     const params = new URLSearchParams();
     if ($('tl-camera').value) params.set('camera_id', $('tl-camera').value);
     params.set('days', $('tl-activity-days').value);
+    const stale = beginLoad('activity');
     let data;
     try {
       data = await api.get(`/api/timeline/activity?${params.toString()}`);
+      if (stale()) return;
     } catch (err) {
       return;
     }
@@ -1267,7 +1306,11 @@
       if (!ok) return;
       try {
         const result = await api.post('/api/recordings/delete', { ids, stop_active: true });
-        ui.toast(`Deleted ${result.deleted} recording(s)`, 'success');
+        const failed = (result.failed || []).length;
+        ui.toast(
+          `Deleted ${result.deleted} recording(s)` + (failed ? `, ${failed} could not be deleted` : ''),
+          failed ? 'error' : 'success'
+        );
         state.rec.selected.clear();
         loadRecordings();
       } catch (err) {
@@ -1325,8 +1368,22 @@
     params.set('limit', state.rec.limit);
     params.set('offset', state.rec.offset);
 
-    const data = await api.get(`/api/recordings?${params.toString()}`);
+    const stale = beginLoad('recordings');
+    let data;
+    try {
+      data = await api.get(`/api/recordings?${params.toString()}`);
+    } catch (err) {
+      if (!stale()) ui.toast(err.message, 'error');
+      return;
+    }
+    if (stale()) return;
+    if (steppedBack(state.rec, data.recordings, data.total)) return loadRecordings();
     state.rec.total = data.total;
+    keepVisibleSelection(
+      state.rec,
+      data.recordings.map((rec) => rec.id),
+      $('rec-select-all')
+    );
     const body = $('rec-body');
     if (!data.recordings.length) {
       body.innerHTML = '<tr><td colspan="9"><div class="empty">No recordings found</div></td></tr>';
@@ -1436,9 +1493,13 @@
       if (!ids.length) return;
       const ok = await ui.confirmModal('Delete events', `Delete ${ids.length} event(s)?`);
       if (!ok) return;
-      const result = await api.post('/api/events/delete', { ids });
-      ui.toast(`Deleted ${result.deleted} event(s)`, 'success');
-      state.ev.selected.clear();
+      try {
+        const result = await api.post('/api/events/delete', { ids });
+        ui.toast(`Deleted ${result.deleted} event(s)`, 'success');
+        state.ev.selected.clear();
+      } catch (err) {
+        ui.toast(err.message, 'error');
+      }
       loadEvents();
     });
     $('ev-clear').addEventListener('click', async () => {
@@ -1448,8 +1509,12 @@
         cameraId ? 'Delete every event of the selected camera?' : 'Delete every stored event?'
       );
       if (!ok) return;
-      const result = await api.post('/api/events/delete', { all: true, camera_id: cameraId || null });
-      ui.toast(`Deleted ${result.deleted} event(s)`, 'success');
+      try {
+        const result = await api.post('/api/events/delete', { all: true, camera_id: cameraId || null });
+        ui.toast(`Deleted ${result.deleted} event(s)`, 'success');
+      } catch (err) {
+        ui.toast(err.message, 'error');
+      }
       loadEvents();
     });
   }
@@ -1475,10 +1540,25 @@
     params.set('limit', state.ev.limit);
     params.set('offset', state.ev.offset);
 
-    const [data, types] = await Promise.all([
-      api.get(`/api/events?${params.toString()}`),
-      api.get('/api/events/types'),
-    ]);
+    const stale = beginLoad('events');
+    let data;
+    let types;
+    try {
+      [data, types] = await Promise.all([
+        api.get(`/api/events?${params.toString()}`),
+        api.get('/api/events/types'),
+      ]);
+    } catch (err) {
+      if (!stale()) ui.toast(err.message, 'error');
+      return;
+    }
+    if (stale()) return;
+    if (steppedBack(state.ev, data.events, data.total)) return loadEvents();
+    keepVisibleSelection(
+      state.ev,
+      data.events.map((event) => event.id),
+      $('ev-select-all')
+    );
 
     const typeSelect = $('ev-filter-type');
     const currentType = typeSelect.value;
@@ -1566,7 +1646,16 @@
     if (camera) params.set('camera_id', camera);
     params.set('limit', state.snap.limit);
     params.set('offset', state.snap.offset);
-    const data = await api.get(`/api/snapshots?${params.toString()}`);
+    const stale = beginLoad('snapshots');
+    let data;
+    try {
+      data = await api.get(`/api/snapshots?${params.toString()}`);
+    } catch (err) {
+      if (!stale()) ui.toast(err.message, 'error');
+      return;
+    }
+    if (stale()) return;
+    if (steppedBack(state.snap, data.snapshots, data.total)) return loadSnapshots();
     state.snap.total = data.total;
 
     $('snap-grid').innerHTML = data.snapshots.length

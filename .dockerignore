@@ -19,5 +19,9 @@ test
 *.log
 .env
 README.md
+CLAUDE.md
+.claude
+docs
+.github
 docker-compose*.yml
 Dockerfile

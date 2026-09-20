@@ -65,6 +65,12 @@
       this.quality = 'sub';
       this.retries = 0;
       this.retryTimer = null;
+      this.recoverTimer = null;
+      // A decode error ends a MediaSource for good while the socket stays
+      // healthy, so nothing else would notice.
+      this.video.addEventListener('error', () => {
+        if (this.video.error) this.recoverMedia(this.video.error.message || 'Playback error');
+      });
       // Rolling window of received chunks, used to measure the real bitrate.
       this.traffic = [];
       this.totalBytes = 0;
@@ -84,6 +90,8 @@
       this.paused = false;
       this.cameraId = cameraId;
       this.quality = quality || 'sub';
+      this.traffic = [];
+      this.totalBytes = 0;
       this.connect();
     }
 
@@ -111,7 +119,8 @@
 
       ws.onclose = () => {
         if (this.closed || this.ws !== ws) return;
-        this.status('disconnected');
+        // The server explains itself before closing; do not paint over that.
+        if (this.state !== 'error') this.status('disconnected');
         this.scheduleReconnect();
       };
       ws.onerror = () => {
@@ -133,6 +142,8 @@
       this.closed = true;
       if (this.retryTimer) clearTimeout(this.retryTimer);
       this.retryTimer = null;
+      if (this.recoverTimer) clearTimeout(this.recoverTimer);
+      this.recoverTimer = null;
       this.retries = 0;
       if (this.ws) {
         const ws = this.ws;
@@ -165,7 +176,8 @@
         this.initSegment = bytes;
         this.codec = codecFromInit(bytes);
         this.retries = 0;
-        this.buildPipeline();
+        // Paused keeps its frozen frame; resume() rebuilds from this segment.
+        if (!this.paused) this.buildPipeline();
         return;
       }
       if (this.paused || !this.sourceBuffer) return;
@@ -202,8 +214,10 @@
             this.sourceBuffer = sourceBuffer;
             this.queue = this.initSegment ? [this.initSegment] : [];
             this.pump();
-            const playing = this.video.play();
-            if (playing && playing.catch) playing.catch(() => {});
+            if (!this.paused) {
+              const playing = this.video.play();
+              if (playing && playing.catch) playing.catch(() => {});
+            }
           } catch (err) {
             this.status('error', err.message);
           }
@@ -224,9 +238,22 @@
           this.trim(true);
           this.queue.unshift(chunk);
         } else {
-          this.status('error', err.message);
+          this.recoverMedia(err.message);
         }
       }
+    }
+
+    /** Start over with a fresh MediaSource from the cached init segment. */
+    recoverMedia(reason) {
+      if (this.closed || this.paused || !this.initSegment || this.recoverTimer) return;
+      this.teardownMedia();
+      this.status('reconnecting', reason);
+      this.recoverTimer = setTimeout(() => {
+        this.recoverTimer = null;
+        if (this.closed || this.paused || !this.initSegment) return;
+        this.buildPipeline();
+        if (this.mediaSource) this.status('live');
+      }, 1500);
     }
 
     afterAppend() {

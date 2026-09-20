@@ -35,15 +35,30 @@ function slug(text) {
 }
 
 /**
+ * Stamps only go down to the second, so two files started within one would
+ * share a name – and ffmpeg's `-y` would quietly overwrite the first.
+ */
+function uniqueName(dir, base, ext) {
+  let filename = `${base}${ext}`;
+  for (let n = 2; fs.existsSync(path.join(dir, filename)); n += 1) filename = `${base}-${n}${ext}`;
+  return filename;
+}
+
+/**
  * Build the on-disk target for a new recording.
  * rel_path is what we persist in the DB so the data directory stays movable.
  */
 function recordingTarget(camera, trigger, date) {
   const when = date || new Date();
-  const filename = `${timeStamp(when)}_${slug(camera.name)}_${trigger}.mp4`;
-  const relPath = path.posix.join(String(camera.id), dateFolder(when), filename);
+  const relDir = path.posix.join(String(camera.id), dateFolder(when));
+  fs.mkdirSync(path.join(config.recordingsDir, relDir), { recursive: true });
+  const filename = uniqueName(
+    path.join(config.recordingsDir, relDir),
+    `${timeStamp(when)}_${slug(camera.name)}_${trigger}`,
+    '.mp4'
+  );
+  const relPath = path.posix.join(relDir, filename);
   const absPath = path.join(config.recordingsDir, relPath);
-  fs.mkdirSync(path.dirname(absPath), { recursive: true });
   return { filename, relPath, absPath };
 }
 
@@ -63,10 +78,11 @@ function waveformTarget(relPath) {
 
 function snapshotTarget(camera, date) {
   const when = date || new Date();
-  const filename = `${timeStamp(when)}_${slug(camera.name)}.jpg`;
-  const relPath = path.posix.join(String(camera.id), dateFolder(when), filename);
+  const relDir = path.posix.join(String(camera.id), dateFolder(when));
+  fs.mkdirSync(path.join(config.snapshotsDir, relDir), { recursive: true });
+  const filename = uniqueName(path.join(config.snapshotsDir, relDir), `${timeStamp(when)}_${slug(camera.name)}`, '.jpg');
+  const relPath = path.posix.join(relDir, filename);
   const absPath = path.join(config.snapshotsDir, relPath);
-  fs.mkdirSync(path.dirname(absPath), { recursive: true });
   return { filename, relPath, absPath };
 }
 

@@ -69,7 +69,8 @@ router.post('/password', requireAuth, (req, res) => {
   }
   repo.users.updatePassword(user.id, bcrypt.hashSync(next, 10));
   setSetting('default_admin_password', '0');
-  res.cookie(config.cookieName, createToken(user), cookieOptions());
+  // The session is bound to the password, so this browser needs a fresh one.
+  res.cookie(config.cookieName, createToken(repo.users.findById(user.id)), cookieOptions());
   res.json({ ok: true });
 });
 

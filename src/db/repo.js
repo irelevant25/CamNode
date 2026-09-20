@@ -3,6 +3,13 @@
 const { getDb } = require('./index');
 const { encrypt, decrypt } = require('./crypto');
 
+/**
+ * Timestamps are stored as ISO strings ("2026-08-20T18:42:07.000Z") and compared
+ * as text. SQLite's datetime('now') uses a space instead of the "T", which sorts
+ * differently, so "now" has to be produced in the stored format.
+ */
+const SQL_NOW_ISO = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+
 /* ------------------------------------------------------------------ users */
 
 const users = {
@@ -339,7 +346,7 @@ const events = {
       .prepare(
         `SELECT date(received_at, 'localtime') AS day, COUNT(*) AS count
            FROM events
-          WHERE received_at >= datetime('now', ?)
+          WHERE received_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
             ${cameraId ? 'AND camera_id = ?' : ''}
           GROUP BY day
           ORDER BY day`
@@ -464,7 +471,7 @@ const recordings = {
         `SELECT r.*, c.name AS camera_name
            FROM recordings r LEFT JOIN cameras c ON c.id = r.camera_id
           WHERE r.started_at < ?
-            AND COALESCE(r.ended_at, datetime('now')) >= ?
+            AND COALESCE(r.ended_at, ${SQL_NOW_ISO}) >= ?
             ${cameraId ? 'AND r.camera_id = ?' : ''}
           ORDER BY r.started_at`
       )

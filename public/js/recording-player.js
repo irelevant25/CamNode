@@ -61,6 +61,14 @@
       title: `${recording.camera_name || 'Recording'} · ${ui.formatDateTime(recording.started_at)}`,
       wide: true,
       body,
+      // Without this every recording ever opened stays alive behind the resize
+      // listener, video element, buffered media and all.
+      onClose: () => {
+        window.removeEventListener('resize', drawWave);
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      },
       buttons: [
         {
           label: 'Download',

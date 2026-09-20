@@ -10,6 +10,7 @@ const storage = require('../services/storage');
 const streamHub = require('../services/streamHub');
 const recorder = require('../services/recorder');
 const retention = require('../services/retention');
+const { asyncHandler } = require('../middleware/asyncHandler');
 
 const router = express.Router();
 
@@ -47,7 +48,7 @@ router.get('/stats', (req, res) => {
     cameras_online: db.prepare("SELECT COUNT(*) AS c FROM cameras WHERE status = 'online'").get().c,
     events: db.prepare('SELECT COUNT(*) AS c FROM events').get().c,
     events_today: db
-      .prepare("SELECT COUNT(*) AS c FROM events WHERE received_at >= datetime('now', '-1 day')")
+      .prepare("SELECT COUNT(*) AS c FROM events WHERE received_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 day')")
       .get().c,
     recordings: db.prepare('SELECT COUNT(*) AS c FROM recordings').get().c,
     snapshots: db.prepare('SELECT COUNT(*) AS c FROM snapshots').get().c,
@@ -110,9 +111,9 @@ router.put('/settings', (req, res) => {
   res.json({ settings: allSettings(), effective_public_url: cameraManager.effectivePublicUrl() });
 });
 
-router.post('/retention/run', async (req, res) => {
+router.post('/retention/run', asyncHandler(async (req, res) => {
   await retention.runOnce();
   res.json({ ok: true });
-});
+}));
 
 module.exports = router;

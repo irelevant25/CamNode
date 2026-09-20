@@ -22,6 +22,8 @@ const PUSH_RENEW_MS = 45000;
 const PUSH_RESUBSCRIBE_MS = 9 * 60 * 1000;
 /** A pull-point that dies this fast has never worked – fall back to push. */
 const PULL_GRACE_MS = 30000;
+/** A failed push subscription is tried again after this long. */
+const PUSH_RETRY_MS = 30000;
 /** At most one event snapshot per burst of notifications. */
 const SNAPSHOT_COOLDOWN_MS = 15000;
 
@@ -188,6 +190,7 @@ class CameraRuntime {
     this.lastSnapshotAt = 0;
     this.subscribedAt = null;
     this.resubscribeTimer = null;
+    this.pushRetryTimer = null;
     // Where pushed notifications end up, so losses can be located rather than
     // guessed at.
     this.counters = {
@@ -336,6 +339,13 @@ class CameraRuntime {
       this.eventChannelError = err.message;
       log.warn(`camera ${this.cameraId}: push subscription failed: ${err.message}`);
       this.setStatus('degraded', `Could not subscribe for events: ${err.message}`);
+      // Nothing else would try again: the renew timers only exist once a
+      // subscription has succeeded, and the health check keeps passing.
+      this.stopPushRenew();
+      this.pushRetryTimer = setTimeout(() => {
+        this.pushRetryTimer = null;
+        if (!this.stopped && this.cam === cam) this.startPush();
+      }, PUSH_RETRY_MS);
     }
   }
 
@@ -383,6 +393,8 @@ class CameraRuntime {
     this.pushRenewTimer = null;
     if (this.resubscribeTimer) clearTimeout(this.resubscribeTimer);
     this.resubscribeTimer = null;
+    if (this.pushRetryTimer) clearTimeout(this.pushRetryTimer);
+    this.pushRetryTimer = null;
   }
 
   /** Called by the /onvif/notify endpoint for every pushed notification. */

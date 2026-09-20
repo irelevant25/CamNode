@@ -50,6 +50,8 @@ services:
       ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:?set ADMIN_PASSWORD for the first-run account}"
       SESSION_HOURS: "${SESSION_HOURS:-72}"
+      # 1 only behind a reverse proxy (login rate limit reads X-Forwarded-For).
+      TRUST_PROXY: "${TRUST_PROXY:-}"
       PUBLIC_URL: "${PUBLIC_URL:-}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
     volumes:

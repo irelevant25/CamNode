@@ -1,12 +1,22 @@
 'use strict';
 
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const cookie = require('cookie-parser');
 const { config } = require('../config');
 const repo = require('../db/repo');
 
+/**
+ * Ties a session to the password it was opened with, so changing or resetting
+ * the password signs every other browser out instead of leaving a stolen
+ * cookie valid until it expires.
+ */
+function passwordStamp(user) {
+  return crypto.createHash('sha256').update(String(user.password_hash)).digest('hex').slice(0, 16);
+}
+
 function createToken(user) {
-  return jwt.sign({ sub: user.id, username: user.username }, config.secret, {
+  return jwt.sign({ sub: user.id, username: user.username, pwd: passwordStamp(user) }, config.secret, {
     expiresIn: `${config.sessionHours}h`,
   });
 }
@@ -28,6 +38,16 @@ function cookieOptions() {
   };
 }
 
+/** The user a verified token belongs to, or null when it no longer applies. */
+function userFor(payload) {
+  if (!payload) return null;
+  const user = repo.users.findById(payload.sub);
+  if (!user) return null;
+  // Tokens issued before the stamp existed carry none; let those run out.
+  if (payload.pwd !== undefined && payload.pwd !== passwordStamp(user)) return null;
+  return { id: user.id, username: user.username };
+}
+
 function readToken(req) {
   if (req.cookies && req.cookies[config.cookieName]) return req.cookies[config.cookieName];
   const header = req.headers.authorization;
@@ -37,11 +57,9 @@ function readToken(req) {
 
 /** Express guard for /api routes. */
 function requireAuth(req, res, next) {
-  const payload = verifyToken(readToken(req));
-  if (!payload) return res.status(401).json({ error: 'Not authenticated' });
-  const user = repo.users.findById(payload.sub);
+  const user = userFor(verifyToken(readToken(req)));
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
-  req.user = { id: user.id, username: user.username };
+  req.user = user;
   next();
 }
 
@@ -68,10 +86,7 @@ function authenticateUpgrade(req) {
       token = null;
     }
   }
-  const payload = verifyToken(token);
-  if (!payload) return null;
-  const user = repo.users.findById(payload.sub);
-  return user ? { id: user.id, username: user.username } : null;
+  return userFor(verifyToken(token));
 }
 
 module.exports = {

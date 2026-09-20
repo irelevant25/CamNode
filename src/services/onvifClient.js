@@ -77,10 +77,11 @@ async function getProfiles(cam) {
       token,
       name: profile.name || token,
       encoding: video.encoding || null,
-      width: resolution.width || null,
-      height: resolution.height || null,
-      fps: (video.rateControl && video.rateControl.frameRateLimit) || null,
-      bitrate: (video.rateControl && video.rateControl.bitrateLimit) || null,
+      // Whatever the camera put in the XML; the UI expects numbers.
+      width: Number(resolution.width) || null,
+      height: Number(resolution.height) || null,
+      fps: Number(video.rateControl && video.rateControl.frameRateLimit) || null,
+      bitrate: Number(video.rateControl && video.rateControl.bitrateLimit) || null,
     };
   });
 }

@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const { pipeline } = require('stream');
 
 /**
  * Serve a file with HTTP range support so the browser can seek inside
@@ -27,7 +28,7 @@ function sendFile(req, res, absPath, options) {
   if (!range) {
     res.set('Content-Length', String(stat.size));
     if (req.method === 'HEAD') return res.end();
-    return fs.createReadStream(absPath).pipe(res);
+    return stream(fs.createReadStream(absPath), res);
   }
 
   const match = /bytes=(\d*)-(\d*)/.exec(range);
@@ -54,7 +55,15 @@ function sendFile(req, res, absPath, options) {
   res.set('Content-Range', `bytes ${start}-${end}/${stat.size}`);
   res.set('Content-Length', String(end - start + 1));
   if (req.method === 'HEAD') return res.end();
-  return fs.createReadStream(absPath, { start, end }).pipe(res);
+  return stream(fs.createReadStream(absPath, { start, end }), res);
+}
+
+/**
+ * `pipe` leaves the file open when the browser aborts, which a seeking video
+ * player does constantly; `pipeline` closes it and absorbs read errors.
+ */
+function stream(source, res) {
+  pipeline(source, res, () => {});
 }
 
 function sanitise(name) {

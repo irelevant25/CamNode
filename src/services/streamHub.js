@@ -100,7 +100,11 @@ class LiveStream {
     this.proc = proc;
     this.startedAt = new Date();
 
-    this.splitter = new Mp4Splitter((kind, buffer) => this.onChunk(kind, buffer));
+    // A replaced process can still flush output while it shuts down; its
+    // fragments belong to a different init segment and must not reach viewers.
+    this.splitter = new Mp4Splitter((kind, buffer) => {
+      if (this.proc === proc) this.onChunk(kind, buffer);
+    });
     this.splitter.on('error', (err) => {
       log.warn(`camera ${this.camera.id}: mp4 parse error: ${err.message}`);
       this.restart();

@@ -8,6 +8,7 @@ const snapshots = require('../services/snapshots');
 const streamHub = require('../services/streamHub');
 const library = require('../services/library');
 const { createLogger } = require('../logger');
+const { asyncHandler } = require('../middleware/asyncHandler');
 
 const log = createLogger('api:cameras');
 const router = express.Router();
@@ -86,7 +87,7 @@ router.put('/:id', (req, res) => {
   res.json({ camera: decorate(camera) });
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   const camera = repo.cameras.get(id);
   if (!camera) return res.status(404).json({ error: 'Camera not found' });
@@ -97,7 +98,7 @@ router.delete('/:id', async (req, res) => {
   library.purgeCamera(id);
   log.info(`camera ${id} (${camera.name}) deleted`);
   res.json({ ok: true });
-});
+}));
 
 /** Re-run ONVIF discovery for a stored camera. */
 router.post('/:id/refresh', async (req, res) => {
@@ -189,13 +190,13 @@ router.post('/:id/recording/start', async (req, res) => {
   }
 });
 
-router.post('/:id/recording/stop', async (req, res) => {
+router.post('/:id/recording/stop', asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!repo.cameras.get(id)) return res.status(404).json({ error: 'Camera not found' });
   const recording = await recorder.stop(id, 'stopped by user');
   if (!recording) return res.status(409).json({ error: 'This camera is not recording' });
   res.json({ recording, active: null });
-});
+}));
 
 router.get('/:id/status', (req, res) => {
   const camera = repo.cameras.get(Number(req.params.id));

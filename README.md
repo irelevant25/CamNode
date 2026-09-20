@@ -163,6 +163,7 @@ yourself, and uncomment `pull_policy: never` so Docker does not try to fetch it.
 | `HTTP_PORT`      | `8080`             | Host port published by the stack                                |
 | `TZ`             | `Europe/Bratislava`| Timezone for folder names and displayed times                   |
 | `SESSION_HOURS`  | `72`               | Session cookie lifetime                                         |
+| `TRUST_PROXY`    | off                | Set to `1` **only** behind a reverse proxy, so the login rate limit sees the real client address from `X-Forwarded-For`. Without a proxy that header is whatever the client says it is. |
 | `PUBLIC_URL`     | auto-detected      | Address cameras POST events back to, **using the published port** – e.g. `http://192.168.1.50:8800` when `HTTP_PORT=8800`. Needed in Docker. Can also be set in **Settings** afterwards, which overrides this. |
 | `LOG_LEVEL`      | `info`             | `error` \| `warn` \| `info` \| `debug`                          |
 
@@ -366,7 +367,7 @@ to a build; the image installs ffmpeg from Debian instead.
 npm install
 cp .env.example .env          # set DATA_DIR=./data for local runs
 npm start                     # http://localhost:8080
-npm test                      # mp4 splitting, ONVIF parsing, recorder lifecycle
+npm test                      # mp4 splitting, ONVIF parsing, recorder lifecycle, timeline, regressions
 ```
 
 `npm test` needs neither a camera nor ffmpeg – the recorder tests run against a

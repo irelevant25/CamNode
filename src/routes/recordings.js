@@ -8,6 +8,7 @@ const waveform = require('../services/waveform');
 const { spawnFfmpeg } = require('../services/ffmpeg');
 const { createLogger } = require('../logger');
 const { sendFile } = require('./media');
+const { asyncHandler } = require('../middleware/asyncHandler');
 
 const log = createLogger('api:recordings');
 const router = express.Router();
@@ -151,14 +152,14 @@ router.get('/:id/thumbnail', (req, res) => {
 });
 
 /** Bulk delete – declared before /:id so "delete" is not read as an id. */
-router.post('/delete', async (req, res) => {
+router.post('/delete', asyncHandler(async (req, res) => {
   const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
   if (!ids.length) return res.status(400).json({ error: 'No recordings selected' });
   const result = await library.deleteRecordings(ids, { stopFirst: !!(req.body && req.body.stop_active) });
   res.json(result);
-});
+}));
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', asyncHandler(async (req, res) => {
   const result = await library.deleteRecording(Number(req.params.id), {
     stopFirst: req.query.stop === '1',
   });
@@ -167,6 +168,6 @@ router.delete('/:id', async (req, res) => {
     return res.status(code).json({ error: result.reason });
   }
   res.json({ ok: true });
-});
+}));
 
 module.exports = router;

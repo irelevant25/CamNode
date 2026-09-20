@@ -61,6 +61,9 @@ const config = {
     isDefaultPassword: WEAK_PASSWORDS.indexOf(env('ADMIN_PASSWORD', '')) !== -1,
   },
   sessionHours: int('SESSION_HOURS', 72),
+  // Only behind a reverse proxy. Trusting X-Forwarded-For without one lets any
+  // client pick its own address and walk around the login rate limit.
+  trustProxy: /^(1|true|yes)$/i.test(env('TRUST_PROXY', '')),
   ffmpegPath: env('FFMPEG_PATH', 'ffmpeg'),
   ffprobePath: env('FFPROBE_PATH', 'ffprobe'),
   logLevel: env('LOG_LEVEL', 'info'),

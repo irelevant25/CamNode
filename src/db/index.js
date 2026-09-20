@@ -110,7 +110,8 @@ const DEFAULT_SETTINGS = {
   public_url: '',
 };
 
-function init() {
+function init(options) {
+  const opts = options || {};
   ensureDirs();
   db = new Database(config.dbFile);
   db.pragma('journal_mode = WAL');
@@ -127,7 +128,9 @@ function init() {
 
   migrate();
   bootstrapAdmin();
-  recoverInterruptedRecordings();
+  // Tools that open the database next to a running server must not touch the
+  // recordings it is still writing.
+  if (opts.recover !== false) recoverInterruptedRecordings();
   log.info(`database ready at ${config.dbFile}`);
   return db;
 }
@@ -192,7 +195,7 @@ function recoverInterruptedRecordings() {
   db.prepare(
     `UPDATE recordings
        SET status = 'interrupted',
-           ended_at = COALESCE(ended_at, datetime('now')),
+           ended_at = COALESCE(ended_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
            error = COALESCE(error, 'process stopped unexpectedly')
      WHERE status = 'recording'`
   ).run();
